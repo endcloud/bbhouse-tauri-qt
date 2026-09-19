@@ -30,7 +30,7 @@
 
 ## 发布状态与边界
 
-**已完成**：远端 `tauri` 仍指向旧 master 的确切 SHA `d22550e971ed5ee7abc30de06ea508f8dde4f6b8`；远端 `master` 已更新到 Qt 发布提交 `c1380c01eb342b8e4d8e8bf5860e2dec9631e16b`。推送使用绑定旧 SHA 的 `--force-with-lease`，随后通过 `git ls-remote` 核验两个分支。
+**已完成**：远端 `tauri` 仍指向旧 master 的确切 SHA `d22550e971ed5ee7abc30de06ea508f8dde4f6b8`；远端 `master` 已更新到最终发布提交 `fe00f58`（包含 Qt 源码、README 和发布记录）。推送使用绑定旧 SHA 的 `--force-with-lease`，随后通过 `git ls-remote` 核验两个分支。
 
 本次没有创建版本 tag、GitHub Release 或上传二进制包；现有 tag/手动触发 CI 的首次运行仍为原发布准备待办。
 
