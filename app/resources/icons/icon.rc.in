@@ -1,0 +1,2 @@
+// Application icon, shared by MSVC rc and MinGW windres.
+1 ICON "@BBHOUSE_WINDOWS_ICON@"

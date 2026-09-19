@@ -1,0 +1,52 @@
+schema: spec-driven
+
+context: |
+  Language: zh-CN
+  All artifacts must be written in zh-CN.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Project: bbhouse-qt — Bilibili.History 的 Qt6 + QML 桌面重实现(原型为
+  C:\Users\shizi\source\repos\Bilibili.History,WinUI 3 应用)。功能:
+  爬取 B 站云端观看历史(cursor API,云端上限约 1000 条)落本地 SQLite,
+  并以瀑布流卡片浏览;含动态/稍后再看/番剧/特别关注/本地记录等卡片页,
+  以及 mpv 内核的播放窗口(DASH 双直链 + 弹幕 + 自绘控制面板)。
+
+  Tech stack:
+  - Qt 6.11.1 (mingw_64) + CMake + Ninja;本机 Qt 安装于 C:\Qt
+  - UI: QML + FluentUI 组件库(源码在 ./3rd/FluentUI,import FluentUI)
+  - 播放内核: mpv(libmpv-2.dll,位于 ./3rd/mpv),QML 侧自绘控制面板
+  - 本地存储: SQLite(WAL)via Qt Sql(QSQLITE)或捆绑 sqlite3
+  - JSON: QJsonDocument 手工解析;网络: QNetworkAccessManager
+  - 第三方库一律放 ./3rd 下
+
+  Key layout (this repo):
+  - app/            主工程(入口、QML 页面、C++ 服务层)
+  - 3rd/FluentUI    FluentUI QML 库源码(CMake 子目录编译)
+  - 3rd/mpv         libmpv-2.dll / 头文件 / 导入库
+  - openspec/       能力规格与变更(17 个能力自 WinUI 原型迁移而来)
+
+  Conventions:
+  - All user-visible text MUST come from localized resources with zh-CN
+    (neutral, qsTr 源文案即中文) and en-US (Qt .ts 翻译,启动按偏好加载);
+    no new hardcoded display string literals outside qsTr/翻译体系.
+  - Code identifiers in English.
+  - video_key = business:oid:kid;view_records are UNIQUE(video_key, view_at)
+    so re-syncs are idempotent and each watch timestamp is kept as its own row.
+  - Cookie is read from bilibili.cookie.txt at the app data / repo root
+    (dev shape, 与原项目一致).
+  - 本仓库 UI/UX 由用户手测;代理侧完成标准为 CMake 构建成功与可运行 exe,
+    不做 computer-use 式 UI 自动化测试。
+
+# Per-artifact rules (optional)
+rules:
+  tasks:
+    - 任务按可独立编译验证的粒度拆分,每步给出构建验证方式。
+
+# Per-operation guidance (optional)
+operations:
+  apply:
+    guidance:
+      - 实现完成后运行 CMake 构建确认 0 error,再勾选任务。
+  archive:
+    guidance:
+      - 归档前总结完成度,未完成的 UI 手测项在交付说明中列出。

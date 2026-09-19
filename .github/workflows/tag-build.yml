@@ -1,0 +1,130 @@
+name: Tag build
+
+on:
+  push:
+    tags:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tag-build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 固定公开 SDK；开发机可继续使用更新的 Qt，不读取本机 CMake preset。
+  QT_VERSION: '6.8.3'
+  BBHOUSE_DATA_DIR: ${{ github.workspace }}/build/ci-data
+  QT_QPA_PLATFORM: offscreen
+  QT_QUICK_BACKEND: software
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2022
+            qt-host: windows
+            qt-arch: win64_msvc2022_64
+          - platform: macos-arm64
+            runner: macos-15
+            qt-host: mac
+            qt-arch: clang_64
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Audit tracked files for private data
+        run: python tools/privacy_audit.py
+
+      - name: Select MSVC x64
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@bcb88e3bed2e992f5f9e24c0f9e364a231d278eb # v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.qt-host }}
+          arch: ${{ matrix.qt-arch }}
+          modules: qtimageformats qtshadertools
+          cache: true
+
+      - name: Install native arm64 test kernel
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          brew install ninja mpv
+          mkdir -p build
+          brew list --versions mpv > build/ci-kernel-version.txt
+
+      - name: Configure Windows x64
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          cmake -S . -B build/ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          -DCMAKE_CXX_COMPILER=cl
+
+      - name: Configure macOS arm64
+        if: runner.os == 'macOS'
+        shell: bash
+        run: >-
+          cmake -S . -B build/ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+
+      - name: Build application and all regression programs
+        run: cmake --build build/ci --target bbhouse-qt regression-tests --parallel 3
+
+      - name: Test Windows without an unverified mpv download
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Native player programs compile here but require a separately supplied libmpv DLL to run.
+          'Windows: player-runtime, screenshot, live-player and local-player require libmpv and are excluded.' >> $env:GITHUB_STEP_SUMMARY
+          ctest --test-dir build/ci --output-on-failure --no-tests=error -LE requires-libmpv
+
+      - name: Test macOS without interactive graphics
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          printf '%s\n' 'macOS: screenshot-macos and local-player-macos require a native graphics session and are excluded.' >> "$GITHUB_STEP_SUMMARY"
+          cat build/ci-kernel-version.txt >> "$GITHUB_STEP_SUMMARY"
+          ctest --test-dir build/ci --output-on-failure --no-tests=error -LE requires-gui
+
+      - name: Stage build-only artifact
+        env:
+          BUILD_PLATFORM: ${{ matrix.platform }}
+        run: python scripts/stage-ci-artifact.py
+
+      - name: Upload build-only artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bbhouse-qt-${{ matrix.platform }}-build
+          path: build/ci-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload regression diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: regression-${{ matrix.platform }}
+          path: build/ci/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 7

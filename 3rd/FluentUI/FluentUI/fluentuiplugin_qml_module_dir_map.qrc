@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="/qt/qml/FluentUI">C:/Users/shizi/Documents/qt_pro/barcode_tool_qt/FluentUI/FluentUI</file>
+
+  </qresource>
+</RCC>

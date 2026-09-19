@@ -1,0 +1,60 @@
+# Build
+build/
+build-*/
+cmake-build-*/
+out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+.qtcreator/
+*.user
+
+# Qt generated
+*.qm.user
+.qtc_clangd/
+compile_commands.json
+
+# Credentials / user data — never commit
+bilibili.cookie.txt
+bilibili.cookie.normal.txt
+bilibili.cookie*.txt
+cookies.txt
+cookies.json
+.env
+.env.*
+!.env.example
+*.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.*
+bilibili-history-export.json
+special-follow.json
+history-service.json
+avatar-cache/
+bbhouse-qt.ini
+downloads.ini
+download-settings.ini
+*.pem
+*.p12
+*.pfx
+
+# mpv runtime binary (GPL build, downloaded separately)
+3rd/mpv/libmpv-2.dll
+
+# OS
+Thumbs.db
+.DS_Store
+b3的替身
+
+# openspec hook temp
+openspec/specs/.mimosa/
+
+# Python packaging helpers
+__pycache__/
+*.py[cod]

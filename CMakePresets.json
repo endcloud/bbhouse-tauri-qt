@@ -1,0 +1,215 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-mingw",
+      "displayName": "Windows MinGW (Qt 6.11.1 mingw_64)",
+      "description": "Qt Creator kit「Desktop Qt 6.11.1 MinGW 64-bit」的命令行等价物:MinGW 13.1.0 + Qt mingw_64 + Ninja,Release。换机器/升级 Qt 时改这里的 CMAKE_PREFIX_PATH 与 CMAKE_*_COMPILER。",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/preset-windows-mingw",
+      "environment": {
+        "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.1/mingw_64/bin;$penv{PATH}"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/Qt/Tools/Ninja/ninja.exe",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/mingw_64"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows MSVC (Qt 6.11.1 msvc2022_64)",
+      "description": "MSVC cl.exe + Qt msvc2022_64 + Ninja,Release。cl 依赖 VS 环境变量(INCLUDE/LIB),请在「Developer PowerShell for VS 2026」或 vcvars64 之后的终端里执行;工程本身不会再被 CMake 自动挑成 mingw 套件。",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/preset-windows-msvc",
+      "environment": {
+        "PATH": "C:/Qt/6.11.1/msvc2022_64/bin;$penv{PATH}"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MAKE_PROGRAM": "C:/Qt/Tools/Ninja/ninja.exe",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/msvc2022_64"
+      }
+    },
+    {
+      "name": "macos",
+      "displayName": "macOS (Qt 6.11.2)",
+      "description": "AppleClang + Qt 6.11.2 macos + Ninja,Release;libmpv 由 Homebrew 提供(brew install mpv)。",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/preset-macos",
+      "environment": {
+        "PATH": "$env{HOME}/Qt/6.11.2/macos/bin:$penv{PATH}"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "$env{HOME}/Qt/6.11.2/macos"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-mingw",
+      "configurePreset": "windows-mingw",
+      "displayName": "构建 app + 全部测试目标",
+      "targets": [
+        "bbhouse-qt",
+        "store-test",
+        "api-regression-test",
+        "playback-entry-test",
+        "player-runtime-test",
+        "player-controls-test",
+        "danmaku-layout-test",
+        "danmaku-scene-test",
+        "screenshot-test",
+        "danmaku-sprite-test",
+        "preferences-test",
+        "danmaku-filter-test",
+        "dynamics-model-test",
+        "dynamics-controller-test",
+        "page-search-test",
+        "avatar-cache-test",
+        "system-media-test",
+        "system-media-artwork-test",
+        "user-space-test",
+        "card-author-test",
+        "api-proxy-test",
+        "regional-bangumi-test",
+        "live-api-test",
+        "live-controller-test",
+        "live-player-test",
+        "popular-api-test",
+        "popular-controller-test",
+        "popular-page-test",
+        "history-scheduler-test",
+        "history-sync-test",
+        "history-service-entry-test",
+        "history-service-worker-test",
+        "history-controller-test",
+        "download-test",
+        "download-page-test",
+        "local-player-test"
+      ]
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "displayName": "构建 app + 全部测试目标",
+      "targets": [
+        "bbhouse-qt",
+        "store-test",
+        "api-regression-test",
+        "playback-entry-test",
+        "player-runtime-test",
+        "player-controls-test",
+        "danmaku-layout-test",
+        "danmaku-scene-test",
+        "screenshot-test",
+        "danmaku-sprite-test",
+        "preferences-test",
+        "danmaku-filter-test",
+        "dynamics-model-test",
+        "dynamics-controller-test",
+        "page-search-test",
+        "avatar-cache-test",
+        "system-media-test",
+        "system-media-artwork-test",
+        "user-space-test",
+        "card-author-test",
+        "api-proxy-test",
+        "regional-bangumi-test",
+        "live-api-test",
+        "live-controller-test",
+        "live-player-test",
+        "popular-api-test",
+        "popular-controller-test",
+        "popular-page-test",
+        "history-scheduler-test",
+        "history-sync-test",
+        "history-service-entry-test",
+        "history-service-worker-test",
+        "history-controller-test",
+        "download-test",
+        "download-page-test",
+        "local-player-test"
+      ]
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "displayName": "构建 app + 全部测试目标",
+      "targets": [
+        "bbhouse-qt",
+        "store-test",
+        "api-regression-test",
+        "playback-entry-test",
+        "player-runtime-test",
+        "player-controls-test",
+        "danmaku-layout-test",
+        "danmaku-scene-test",
+        "screenshot-test",
+        "danmaku-sprite-test",
+        "preferences-test",
+        "danmaku-filter-test",
+        "dynamics-model-test",
+        "dynamics-controller-test",
+        "page-search-test",
+        "avatar-cache-test",
+        "system-media-test",
+        "system-media-artwork-test",
+        "user-space-test",
+        "card-author-test",
+        "api-proxy-test",
+        "regional-bangumi-test",
+        "live-api-test",
+        "live-controller-test",
+        "live-player-test",
+        "popular-api-test",
+        "popular-controller-test",
+        "popular-page-test",
+        "history-scheduler-test",
+        "history-sync-test",
+        "history-service-entry-test",
+        "history-service-worker-test",
+        "history-controller-test",
+        "download-test",
+        "download-page-test",
+        "local-player-test"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-mingw",
+      "configurePreset": "windows-mingw",
+      "environment": {
+        "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.1/mingw_64/bin;$penv{PATH}",
+        "QT_QPA_PLATFORM": "offscreen"
+      },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "environment": {
+        "PATH": "C:/Qt/6.11.1/msvc2022_64/bin;$penv{PATH}",
+        "QT_QPA_PLATFORM": "offscreen"
+      },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "environment": {
+        "PATH": "$env{HOME}/Qt/6.11.2/macos/bin:$penv{PATH}",
+        "QT_QPA_PLATFORM": "offscreen"
+      },
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
