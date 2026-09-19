@@ -26,24 +26,12 @@
 - 新仓库暂存树与独立历史扫描零命中（首次根提交扫描 823 个去重 blob）。根提交无父节点。
 - 新根提交包含第三方及旧规格既有行尾空白；整棵树初次 `diff --cached --check` 因此报告旧问题。保留第三方/历史原文，本次修改文件的空白检查通过。
 - 新增 OpenSpec 规格通过严格校验，`git diff --check` 通过。
-- 远端 `master` 更新采用绑定旧 SHA 的 `force-with-lease`，只有旧提交已保存且远端没有并发更新时才尝试替换。当前 GitHub 仓库规则仍禁止 force-push，保留本地成果并记录准确规则。
+- 远端 `master` 已使用绑定旧 SHA 的 `force-with-lease` 更新；推送前确认旧提交仍为 d22550e，推送后远端核验通过。
 
 ## 发布状态与边界
 
-**已完成**：远端 `tauri` 指向旧 master 的确切 SHA；本地 Qt 发布副本已初始化、审计并提交。
+**已完成**：远端 `tauri` 仍指向旧 master 的确切 SHA `d22550e971ed5ee7abc30de06ea508f8dde4f6b8`；远端 `master` 已更新到 Qt 发布提交 `c1380c01eb342b8e4d8e8bf5860e2dec9631e16b`。推送使用绑定旧 SHA 的 `--force-with-lease`，随后通过 `git ls-remote` 核验两个分支。
 
-**尚未完成**：远端 master 替换。GitHub 返回 `GH013: Repository rule violations found` / `Cannot force-push to this branch`，当前 master 仍保留旧 Tauri 提交。没有更改或绕过仓库规则。
-
-维护者可在仓库 Settings → Rules → Rulesets 中适用于 master 的仓库规则里临时允许 force pushes（或授权适用的推送者）。处理后，在新仓库执行：
-
-```sh
-cd /Users/ziyu/Documents/code_g/bbhouse-tauri-qt
-git ls-remote origin refs/heads/tauri refs/heads/master
-# 确认 tauri 仍保留旧提交；若 master 已被其他人更新，先重新审查，不改成无条件 --force。
-git push --force-with-lease=refs/heads/master:d22550e971ed5ee7abc30de06ea508f8dde4f6b8 -u origin master:master
-git ls-remote origin refs/heads/tauri refs/heads/master
-```
-
-成功后应确认 master 等于本地 `git rev-parse HEAD`，恢复原 force-push 保护，并补勾 OpenSpec 的远端发布任务。此记录不表示创建了版本 tag、GitHub Release 或上传二进制包；现有 tag/手动触发 CI 的首次运行仍为原发布准备待办。
+本次没有创建版本 tag、GitHub Release 或上传二进制包；现有 tag/手动触发 CI 的首次运行仍为原发布准备待办。
 
 原字体再分发授权、默认头像授权、原生图标/安装手测等待办继续见 [发布准备](发布准备与mpv分发评估.md)、[第三方归属](../THIRD_PARTY_NOTICES.md) 和各自活动 OpenSpec change；此次源码迁移不代表这些事项已完成。

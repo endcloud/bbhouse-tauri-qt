@@ -8,9 +8,5 @@
 
 - [x] 2.1 保存旧 master 到远端 tauri 并校验一致性。
 - [x] 2.2 创建独立源码副本与 master 根提交，核对文档完整性并扫描新历史。
-- [ ] 2.3 使用旧 SHA lease 更新 master 并校验远端；若保护阻塞，记录未完成状态。
+- [x] 2.3 使用旧 SHA lease 更新 master 并校验远端；tauri 保留旧提交，master 已更新为 Qt 发布提交。
 - [x] 2.4 更新交付说明，提交记录，清理项目内临时文件。
-
-## 当前阻塞
-
-远端 tauri 已核实为 d22550e971ed5ee7abc30de06ea508f8dde4f6b8。新仓库复制、独立提交与隐私扫描完成；master 更新遭 GitHub GH013 拒绝（Repository rule: Cannot force-push to this branch），需维护者处理仓库规则后重试。2.3 保持未完成，本 change 不归档。
