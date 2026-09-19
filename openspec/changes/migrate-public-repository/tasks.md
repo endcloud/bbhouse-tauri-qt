@@ -13,4 +13,4 @@
 
 ## 当前阻塞
 
-远端 tauri 已核实为 d22550e971ed5ee7abc30de06ea508f8dde4f6b8。新仓库复制、独立提交与隐私扫描完成；master 更新遭 GitHub GH006 拒绝（Cannot force-push to this branch），需维护者处理分支保护后重试。2.3 保持未完成，本 change 不归档。
+远端 tauri 已核实为 d22550e971ed5ee7abc30de06ea508f8dde4f6b8。新仓库复制、独立提交与隐私扫描完成；master 更新遭 GitHub GH013 拒绝（Repository rule: Cannot force-push to this branch），需维护者处理仓库规则后重试。2.3 保持未完成，本 change 不归档。
