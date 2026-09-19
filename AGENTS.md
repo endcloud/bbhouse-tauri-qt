@@ -44,4 +44,4 @@
 
 - 全平台应用图标：[导入与手测](doc/全平台应用图标.md)。素材位于 `app/resources/icons/`；Qt/FluentUI/关于页使用内嵌 PNG，Windows 主程序与服务宿主编入 ICO，macOS 打包 ICNS 并校验，PNG/ICNS 主体统一为 824/1024 居中留白，原图保留且由 `scripts/generate-macos-icon.py` 生成；Linux DesktopIntegration 组件安装 desktop/hicolor 资源。`add-platform-app-icons` 待用户原生图标手测；外部素材只读。
 
-- Qt 源码迁移至原 Tauri 仓库：[发布与归档](doc/Qt源码发布与Tauri归档.md)。旧 master 完整保存在 tauri；发布副本位于 `/Users/ziyu/Documents/code_g/bbhouse-tauri-qt`，新建 Git 历史，保留全部文档/OpenSpec，排除用户数据、构建产物与 b3 外部链接。
+- public 发布流程与 GitHub 认证：[发布与归档](doc/Qt源码发布与Tauri归档.md)。`migrate-public-repository` 已用户验收并同步归档。开发库与 `/Users/ziyu/Documents/code_g/bbhouse-tauri-qt` 是独立历史；后续按已授权范围白名单同步，保留 public README，排除原 .git/凭据/用户数据/构建产物/b3 链接；构建、CTest、隐私与规格校验后普通推送 master，核对远端 SHA，tauri 固定保留 d22550e。不得重复初始化或默认强推。Git 使用本机 SSH 认证为 endcloud；普通推送可能使用 Ruleset bypass，成功不等于已满足签名/PR 规则。文档维护不顺带发布开发新版本，tag/Release 另行授权。
