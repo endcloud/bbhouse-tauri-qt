@@ -26,15 +26,15 @@
 - 新仓库暂存树与独立历史扫描零命中（首次根提交扫描 823 个去重 blob）。根提交无父节点。
 - 新根提交包含第三方及旧规格既有行尾空白；整棵树初次 `diff --cached --check` 因此报告旧问题。保留第三方/历史原文，本次修改文件的空白检查通过。
 - 新增 OpenSpec 规格通过严格校验，`git diff --check` 通过。
-- 远端 `master` 受保护；采用绑定旧 SHA 的 `force-with-lease`，只有旧提交已保存且远端没有并发更新时才尝试替换。若保护拒绝，保留本地成果并记录需要维护者处理的准确规则。
+- 远端 `master` 更新采用绑定旧 SHA 的 `force-with-lease`，只有旧提交已保存且远端没有并发更新时才尝试替换。当前 GitHub 仓库规则仍禁止 force-push，保留本地成果并记录准确规则。
 
 ## 发布状态与边界
 
 **已完成**：远端 `tauri` 指向旧 master 的确切 SHA；本地 Qt 发布副本已初始化、审计并提交。
 
-**尚未完成**：远端 master 替换。GitHub 返回 `GH006: Protected branch update failed` / `Cannot force-push to this branch`，当前 master 仍保留旧 Tauri 提交。没有更改或绕过分支保护规则。
+**尚未完成**：远端 master 替换。GitHub 返回 `GH013: Repository rule violations found` / `Cannot force-push to this branch`，当前 master 仍保留旧 Tauri 提交。没有更改或绕过仓库规则。
 
-维护者可在仓库 Settings → Branches → 适用 master 的分支保护规则中临时允许 force pushes（或授权适用的推送者）。处理后，在新仓库执行：
+维护者可在仓库 Settings → Rules → Rulesets 中适用于 master 的仓库规则里临时允许 force pushes（或授权适用的推送者）。处理后，在新仓库执行：
 
 ```sh
 cd /Users/ziyu/Documents/code_g/bbhouse-tauri-qt
