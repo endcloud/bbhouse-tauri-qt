@@ -8,8 +8,6 @@
 
 _名称取自常见的『我在B站买了房』的评论_
 
-[![Release Builder](https://github.com/endcloud/bbhouse-tauri-qt/actions/workflows/release.yml/badge.svg)](https://github.com/endcloud/bbhouse-tauri-qt/actions/workflows/release.yml)
-
 ## 已实现的功能
 播放器: 播放列表, 杜比视界与HDR支持, 帧截图, 弹幕, 字幕, 倍速, 下载; 
 在线功能: (已关注的)动态与直播, 追番(港澳台), 流行, 特别关注; 历史记录, 稍后再看
@@ -54,6 +52,7 @@ _名称取自常见的『我在B站买了房』的评论_
 ### 在线服务 
 - [bilibili-api-collect]()
 - [哔哩哔哩-干杯](https://www.bilibili.com/space)
+- [Linux.do - 新的理想社区](https://linux.do/)
 ### 其他 
 - 向所有曾star/pr的朋友致谢, 22年的这个项目, 对我个人而言, 在工作和生活中, 都带来了莫大鼓励.  
 
