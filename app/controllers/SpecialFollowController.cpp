@@ -1,3 +1,4 @@
+#include "core/ControllerTask.h"
 #include "controllers/SpecialFollowController.h"
 
 #include <QDateTime>
@@ -247,6 +248,19 @@ qint64 SpecialFollowController::manageSearchTotal() const {
 
 bool SpecialFollowController::manageSearchMode() const { return manageSearchMode_; }
 
+void SpecialFollowController::setCurrentTab(int value) {
+    if (currentTab_ == value) return;
+    currentTab_ = value;
+    emit currentTabChanged();
+}
+
+void SpecialFollowController::setSearchText(const QString &value) {
+    if (searchText_ == value) return;
+    searchText_ = value;
+    emit searchTextChanged();
+}
+
+
 // ---- UP 快照装载 + 一次性种子导入 ----
 
 void SpecialFollowController::ensureReady() {
@@ -256,12 +270,12 @@ void SpecialFollowController::ensureReady() {
 }
 
 void SpecialFollowController::startSeedOrLoad() {
-    QThreadPool::globalInstance()->start([this] {
+    runControllerTask(this, [this, store = store_] {
         QList<SpecialFollowStore::Entry> members;
         QString error;
         // 文件存在标志决定是否播种:load/save 均经 store 互斥
-        const bool fileExists = [this, &members] {
-            const SpecialFollowStore::Snapshot snapshot = store_.load();
+        const bool fileExists = [store, &members] {
+            const SpecialFollowStore::Snapshot snapshot = store->load();
             members = snapshot.members;
             return snapshot.fileExists;
         }();
@@ -292,19 +306,16 @@ void SpecialFollowController::startSeedOrLoad() {
                     entry.addedAt = now;
                     members.append(entry);
                 }
-                if (!members.isEmpty()) store_.save(members);
+                if (!members.isEmpty()) store->save(members);
             } catch (const std::exception &e) {
                 error = QString::fromUtf8(e.what());
             }
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, members, error] {
-                    seedBusy_.store(false);
-                    if (!error.isEmpty()) emit seedFailed(error);
-                    finishUps(members);
-                },
-                Qt::QueuedConnection);
+        return [this, members, error] {
+            seedBusy_.store(false);
+            if (!error.isEmpty()) emit seedFailed(error);
+            finishUps(members);
+        };
     });
 }
 
@@ -352,7 +363,14 @@ void SpecialFollowController::emitTabReset() {
 }
 
 SpecialFollowController::UpSession *SpecialFollowController::session(qint64 mid) {
-    return &sessions_[mid];  // QHash operator[] 默认构造空会话(未装载态)
+    sessionUse_.removeAll(mid);
+    sessionUse_.append(mid);
+    while (sessionUse_.size() > 12) {
+        const auto oldest = sessionUse_.takeFirst();
+        if (oldest == currentMid_) { sessionUse_.append(oldest); continue; }
+        sessions_.remove(oldest);
+    }
+    return &sessions_[mid];
 }
 
 void SpecialFollowController::ensureCurrentTabLoaded(int tab) {
@@ -409,7 +427,8 @@ void SpecialFollowController::startArcFetch(qint64 mid, int page) {
     const UpSession *state = session(mid);
     const int order = state->arc.order;
     const qint64 tid = state->arc.tid;
-    QThreadPool::globalInstance()->start([this, mid, page, order, tid] {
+    const auto generation = pageGeneration_;
+    runControllerTask(this, [this, generation, mid, page, order, tid] {
         QVariantList items;
         QVariantList partitions;
         qint64 total = 0;
@@ -437,14 +456,12 @@ void SpecialFollowController::startArcFetch(qint64 mid, int page) {
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, mid, page, order, tid, items, partitions, total, error,
+        return [this, generation, mid, page, order, tid, items, partitions, total, error,
                  unauthorized] {
-                    finishArcFetch(mid, page, order, tid, items, partitions, total,
-                                   error, unauthorized);
-                },
-                Qt::QueuedConnection);
+            if (generation != pageGeneration_) return;
+            finishArcFetch(mid, page, order, tid, items, partitions, total,
+                           error, unauthorized);
+        };
     });
 }
 
@@ -505,7 +522,8 @@ void SpecialFollowController::refreshSeasons() {
 }
 
 void SpecialFollowController::startSeasonsFetch(qint64 mid, int page) {
-    QThreadPool::globalInstance()->start([this, mid, page] {
+    const auto generation = pageGeneration_;
+    runControllerTask(this, [this, generation, mid, page] {
         QVariantList items;
         qint64 total = 0;
         QString error;
@@ -527,12 +545,10 @@ void SpecialFollowController::startSeasonsFetch(qint64 mid, int page) {
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, mid, page, items, total, error, unauthorized] {
-                    finishSeasonsFetch(mid, page, items, total, error, unauthorized);
-                },
-                Qt::QueuedConnection);
+        return [this, generation, mid, page, items, total, error, unauthorized] {
+            if (generation != pageGeneration_) return;
+            finishSeasonsFetch(mid, page, items, total, error, unauthorized);
+        };
     });
 }
 
@@ -571,7 +587,8 @@ void SpecialFollowController::loadSeasonVideos(int requestId, bool isSeries,
     if (seasonVideosBusy_.exchange(true)) return;
     emit seasonVideosBusyChanged();
     const qint64 mid = currentMid_;
-    QThreadPool::globalInstance()->start([this, requestId, isSeries, id, mid] {
+    const auto generation = pageGeneration_;
+    runControllerTask(this, [this, generation, requestId, isSeries, id, mid] {
         QVariantList entries;
         QString error;
         try {
@@ -601,19 +618,17 @@ void SpecialFollowController::loadSeasonVideos(int requestId, bool isSeries,
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, requestId, entries, error] {
-                    seasonVideosBusy_.store(false);
-                    emit seasonVideosBusyChanged();
-                    if (error.isEmpty()) {
-                        emit seasonVideosReady(requestId, entries);
-                    } else {
-                        // 拉取失败:既有播放列表与当前播放不受影响
-                        emit seasonVideosFailed(error);
-                    }
-                },
-                Qt::QueuedConnection);
+        return [this, generation, requestId, entries, error] {
+            if (generation != pageGeneration_) return;
+            seasonVideosBusy_.store(false);
+            emit seasonVideosBusyChanged();
+            if (error.isEmpty()) {
+                emit seasonVideosReady(requestId, entries);
+            } else {
+                // 拉取失败:既有播放列表与当前播放不受影响
+                emit seasonVideosFailed(error);
+            }
+        };
     });
 }
 
@@ -634,7 +649,8 @@ void SpecialFollowController::refreshArticles() {
 }
 
 void SpecialFollowController::startArticlesFetch(qint64 mid) {
-    QThreadPool::globalInstance()->start([this, mid] {
+    const auto generation = pageGeneration_;
+    runControllerTask(this, [this, generation, mid] {
         QVariantList items;
         QString error;
         bool unauthorized = false;
@@ -653,12 +669,10 @@ void SpecialFollowController::startArticlesFetch(qint64 mid) {
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, mid, items, error, unauthorized] {
-                    finishArticlesFetch(mid, items, error, unauthorized);
-                },
-                Qt::QueuedConnection);
+        return [this, generation, mid, items, error, unauthorized] {
+            if (generation != pageGeneration_) return;
+            finishArticlesFetch(mid, items, error, unauthorized);
+        };
     });
 }
 
@@ -764,7 +778,8 @@ void SpecialFollowController::manageSearch(const QString &keyword) {
 void SpecialFollowController::startManageFetch(bool searchMode, int page) {
     // 关键词值捕获(池线程不得读主线程可变的 manageKeyword_)
     const QString keyword = manageKeyword_;
-    QThreadPool::globalInstance()->start([this, searchMode, page, keyword] {
+    const auto generation = pageGeneration_;
+    runControllerTask(this, [this, generation, searchMode, page, keyword] {
         QVariantList users;
         qint64 total = 0;
         QString error;
@@ -795,13 +810,11 @@ void SpecialFollowController::startManageFetch(bool searchMode, int page) {
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, searchMode, page, users, total, error, unauthorized] {
-                    finishManageFetch(searchMode, page, users, total, error,
-                                      unauthorized);
-                },
-                Qt::QueuedConnection);
+        return [this, generation, searchMode, page, users, total, error, unauthorized] {
+            if (generation != pageGeneration_) return;
+            finishManageFetch(searchMode, page, users, total, error,
+                              unauthorized);
+        };
     });
 }
 
@@ -912,12 +925,12 @@ bool SpecialFollowController::containsUp(qint64 mid) const {
 
 void SpecialFollowController::ensureLocalReady() {
     if (upsReady_ || seedBusy_.exchange(true)) return;
-    QThreadPool::globalInstance()->start([this] {
-        const auto members = store_.load().members;
-        QMetaObject::invokeMethod(this, [this, members] {
+    runControllerTask(this, [this, store = store_] {
+        const auto members = store->load().members;
+        return [this, members] {
             seedBusy_ = false;
             finishUps(members);
-        }, Qt::QueuedConnection);
+        };
     });
 }
 
@@ -957,9 +970,9 @@ void SpecialFollowController::processSaveQueue() {
     }
     saveBusy_ = true;
     emit localFollowBusyChanged();
-    QThreadPool::globalInstance()->start([this, merged, management = operation.management] {
-        const bool ok = store_.save(merged);
-        QMetaObject::invokeMethod(this, [this, merged, management, ok] {
+    runControllerTask(this, [this, store = store_, merged, management = operation.management] {
+        const bool ok = store->save(merged);
+        return [this, merged, management, ok] {
             // Keep the gate closed while finishUps emits signals; queued requests
             // must derive from this persisted snapshot, not a stale previous one.
             if (ok) {
@@ -973,7 +986,7 @@ void SpecialFollowController::processSaveQueue() {
             saveBusy_ = false;
             emit localFollowBusyChanged();
             processSaveQueue();
-        }, Qt::QueuedConnection);
+        };
     });
 }
 
@@ -998,4 +1011,43 @@ void SpecialFollowController::drainPendingArticles() {
     const qint64 mid = pendingArticlesMid_;
     pendingArticlesMid_ = 0;
     if (mid > 0 && mid == currentMid_) loadArticles();
+}
+
+void SpecialFollowController::releasePageCache() {
+    ++pageGeneration_;
+    sessions_ = {};
+    sessionUse_ = {};
+    pendingArcMid_ = 0;
+    pendingSeasonsMid_ = 0;
+    pendingArticlesMid_ = 0;
+    arcBusy_ = false;
+    seasonsBusy_ = false;
+    articlesBusy_ = false;
+    seasonVideosBusy_ = false;
+    manageBusy_ = false;
+    unauthorized_ = false;
+    manageBrowseItems_ = {};
+    manageSearchItems_ = {};
+    manageBrowsePage_ = 0;
+    manageBrowseTotal_ = 0;
+    manageSearchPage_ = 0;
+    manageSearchTotal_ = 0;
+    manageKeyword_.clear();
+    manageSearchMode_ = false;
+    manageError_.clear();
+    presentedMids_ = {};
+    checkedInfo_ = {};
+    searchText_.clear();
+    emit searchTextChanged();
+    // Local follow membership and queued persistence are shared business state.
+    emitTabReset();
+    emit unauthorizedChanged();
+    emit arcBusyChanged();
+    emit seasonBusyChanged();
+    emit articleBusyChanged();
+    emit seasonVideosBusyChanged();
+    emit manageBusyChanged();
+    emit manageBrowseChanged();
+    emit manageResultsChanged();
+    emit manageErrorChanged();
 }

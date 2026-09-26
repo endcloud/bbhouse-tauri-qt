@@ -259,6 +259,24 @@ int main(int argc, char **argv) {
             inside &= visual.position.y() >= 0 && visual.position.y() + visual.size.height() <= 270;
         check(inside, "sprite mixed modes stay fully within top quarter at large font size");
     }
+    {
+        DanmakuSpriteLayout model;
+        model.configure({640, 360}, 25, 100, 100, 2);
+        model.load({entry(0, 1, "close releases cached image")});
+        check(pump(model, 0, [&] { return !model.frame().isEmpty(); }),
+              "close fixture prepares a cached image");
+        std::weak_ptr<const QImage> image;
+        if (!model.frame().isEmpty()) image = model.frame().first().image;
+        model.load({});
+        check(model.cacheBytes() == 0 && model.cacheEntries() == 0 && image.expired(),
+              "empty load releases cache and active image ownership");
+        model.load({entry(0, 1, "obsolete preparation")});
+        model.advance(0);
+        model.load({});
+        check(pump(model, 0, [&] { return !model.pendingPreparation(); })
+                  && model.cacheBytes() == 0 && model.frame().isEmpty(),
+              "in-flight preparation cannot repopulate cleared image cache");
+    }
     // Test teardown keeps QGuiApplication alive until Qt font workers exit.
     QThreadPool::globalInstance()->waitForDone();
     return failures ? 1 : 0;

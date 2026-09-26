@@ -7,6 +7,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QDebug>
+#include <QEventLoop>
+#include <QTimer>
 #include <memory>
 
 int main(int argc, char **argv) {
@@ -23,7 +25,7 @@ int main(int argc, char **argv) {
     QQmlComponent mocks(&engine);
     mocks.setData(R"(import QtQml
         QtObject {
-            property string appVersion: "1.0.1"
+            property string appVersion: "2.0.3"
             property bool busy: false
             property string qrUrl: "https://passport.bilibili.com/fixture"
             property string status: ""
@@ -48,6 +50,31 @@ int main(int argc, char **argv) {
             page->setSize(QSizeF(width, 600));
             app.processEvents();
             if (page->width() <= 0 || page->height() <= 0) failed = true;
+        }
+        if (QString::fromLatin1(name) == "AboutPage.qml") {
+            QQmlComponent stateComponent(&engine);
+            stateComponent.setData("import QtQml; QtObject { property var value: ({}) }", QUrl());
+            std::unique_ptr<QObject> state(stateComponent.create());
+            page->setProperty("navigationState", QVariant::fromValue(state.get()));
+            auto settle = [&] { QEventLoop loop; QTimer::singleShot(100, &loop, &QEventLoop::quit); loop.exec(); };
+            settle();
+            auto *scroll = page->findChild<QObject *>("aboutScrollView");
+            if (!scroll) return 1;
+            scroll->setProperty("contentY", 400.0);
+            object.reset();
+            object.reset(component.createWithInitialProperties({
+                {"navigationState", QVariant::fromValue(state.get())}, {"width", 1000}, {"height", 600}}));
+            page = qobject_cast<QQuickItem *>(object.get());
+            if (!page) return 1;
+            page->setParentItem(window.contentItem());
+            settle();
+            scroll = page->findChild<QObject *>("aboutScrollView");
+            const bool restored = scroll && qAbs(scroll->property("contentY").toDouble() - 400.0) < 1;
+            qInfo() << (restored ? "PASS" : "FAIL") << "About recreation restores scroll after layout";
+            failed |= !restored;
+            page->setParentItem(nullptr);
+            object.reset();
+            continue;
         }
         page->setParentItem(nullptr);
     }

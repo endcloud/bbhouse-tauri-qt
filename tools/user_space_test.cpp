@@ -1,3 +1,5 @@
+#include "core/ControllerTask.h"
+#include <QSemaphore>
 #include "controllers/UserSpaceController.h"
 #include "core/AppPaths.h"
 #include <QCoreApplication>
@@ -52,6 +54,7 @@ public:
         check(!space.upsReady(), "space content selection never loads or seeds local follows");
         space.selectUp(9007199254740993LL);
         check(space.profileMid() == "9007199254740993", "profile exposes lossless QML string identity");
+        space.profile_.mid = space.currentMid();
         bool accepted = QMetaObject::invokeMethod(&space, "openSpace", Qt::DirectConnection,
             Q_ARG(QString, QStringLiteral("9007199254740993")), Q_ARG(QString, QStringLiteral("same")), Q_ARG(QString, QString()));
         check(accepted && space.currentMid() == 9007199254740993LL, "QML method string mid retains precision without redundant same-user fetch");
@@ -127,7 +130,35 @@ public:
             Q_ARG(QString, QStringLiteral("9007199254740993")));
         check(accepted && contains && store.load().members.last().mid == 9007199254740993LL,
               "QML string follow methods and JSON persistence preserve greater-than-2^53 mid");
+        content.releasePageCache();
+        check(content.sessions_.isEmpty() && content.arcItems().isEmpty() && !content.arcBusy(),
+              "release clears UP content sessions and pending gates");
+        content.ensureCurrentTabLoaded(0);
+        check(content.arcBusy() && content.arcs.last().second == 1,
+              "returning to released UP starts its first page again");
+        follows.releasePageCache();
+        check(follows.containsUp(3000000001LL) && follows.upsReady(),
+              "page release preserves shared local follow membership");
+        space.releasePageCache();
+        space.finishProfile(4, space.currentMid(), profile, {});
+        check(space.profileName().isEmpty() && !space.profileBusy(),
+              "space page release clears profile and rejects old profile response");
+        for (qint64 mid = 100; mid < 140; ++mid) content.session(mid);
+        check(content.sessions_.size() <= 12, "UP session cache is bounded");
+        QSemaphore entered, proceed;
+        bool deliveredAfterDestruction = false;
+        auto *temporaryOwner = new QObject;
+        runControllerTask(temporaryOwner, [&] {
+            entered.release();
+            proceed.acquire();
+            return [&] { deliveredAfterDestruction = true; };
+        });
+        entered.acquire();
+        delete temporaryOwner;
+        proceed.release();
         QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        check(!deliveredAfterDestruction, "worker finishing after owner destruction never delivers its callback");
         qunsetenv("BBHOUSE_DATA_DIR");
         return failures;
     }

@@ -1,4 +1,5 @@
 #include "SystemMediaBackend.h"
+#include "SystemMediaWindowsSmoke.h"
 
 #include <QDebug>
 #include <algorithm>
@@ -15,13 +16,16 @@
 #include <roapi.h>
 #include <winstring.h>
 
-namespace {
 // WinRT ABI declarations are kept local because Qt's MinGW 13.1 SDK has only
 // partial windows.media.h declarations (no Controls2, timeline or video properties).
 // Method order, signatures and IIDs follow mingw-w64's windows.media.idl/.h and
 // systemmediatransportcontrolsinterop.idl, matching the Windows SDK contract:
 // https://github.com/mingw-w64/mingw-w64/blob/master/mingw-w64-headers/include/windows.media.idl
 // This requires neither C++/WinRT nor WRL and uses the same ABI with MSVC/MinGW.
+// ABI interfaces must have external linkage: GCC can devirtualize abstract
+// interfaces in an anonymous namespace to __cxa_pure_virtual at -O3 because
+// it cannot see any concrete implementation. These implementations live in
+// Windows DLLs and arrive through RoGetActivationFactory/QueryInterface.
 namespace MediaAbi {
 struct TimeSpan { INT64 Duration; };
 struct EventRegistrationToken { INT64 value; };
@@ -170,6 +174,7 @@ constexpr IID buttonHandlerIid{0x0557e996, 0x7b23, 0x5bae, {0xaa,0x81,0xea,0x0d,
 constexpr IID positionHandlerIid{0x44e34f15, 0xbdc0, 0x50a7, {0xac,0xe4,0x39,0xe9,0x1f,0xb7,0x53,0xf1}};
 } // namespace MediaAbi
 
+namespace {
 using namespace MediaAbi;
 
 template<class T> class ComPtr {
@@ -305,6 +310,59 @@ public:
         }
         publish();
     }
+    // Read the real WinRT objects back: unavailable controls must not silently
+    // pass an offline deployment check.
+    QString verificationError() const {
+        if (!state_.active)
+            return controls_ || controls2_ || updater_ || timeline_
+                ? QStringLiteral("SMTC reset retained native objects") : resetError_;
+        if (!controls_ || !controls2_ || !updater_ || !timeline_
+            || !buttonsRegistered_ || !positionRegistered_)
+            return QStringLiteral("SMTC attach, timeline or event registration failed");
+        boolean enabled = false;
+        MediaPlaybackStatus status = Closed;
+        if (FAILED(controls_->get_IsEnabled(&enabled)) || !enabled
+            || FAILED(controls_->get_PlaybackStatus(&status))
+            || status != (state_.buffering ? Changing : state_.paused ? Paused : Playing))
+            return QStringLiteral("SMTC playback status readback failed");
+        boolean next = false, previous = false;
+        if (FAILED(controls_->get_IsNextEnabled(&next)) || next != state_.canNext
+            || FAILED(controls_->get_IsPreviousEnabled(&previous)) || previous != state_.canPrevious)
+            return QStringLiteral("SMTC navigation readback failed");
+        MediaPlaybackType type = MediaAbi::Unknown;
+        ComPtr<IVideoDisplayProperties> video;
+        if (FAILED(updater_->get_Type(&type)) || type != Video
+            || FAILED(updater_->get_VideoProperties(video.put())) || !video)
+            return QStringLiteral("SMTC video metadata unavailable");
+        HSTRING title = nullptr, artist = nullptr;
+        const HRESULT titleResult = video->get_Title(&title);
+        const HRESULT artistResult = video->get_Subtitle(&artist);
+        auto text = [](HSTRING value) {
+            UINT32 length = 0;
+            const wchar_t *data = WindowsGetStringRawBuffer(value, &length);
+            return QString::fromWCharArray(data, length);
+        };
+        const bool matches = SUCCEEDED(titleResult) && SUCCEEDED(artistResult)
+            && text(title) == state_.title && text(artist) == state_.artist;
+        WindowsDeleteString(title);
+        WindowsDeleteString(artist);
+        if (!matches) return QStringLiteral("SMTC metadata readback failed");
+        DOUBLE rate = 0;
+        TimeSpan start{}, end{}, minimum{}, maximum{}, position{};
+        const double duration = std::max(0.0, state_.duration);
+        const double expectedPosition = std::clamp(state_.position, 0.0, duration);
+        if (FAILED(controls2_->get_PlaybackRate(&rate)) || rate != state_.rate
+            || FAILED(timeline_->get_StartTime(&start)) || start.Duration != 0
+            || FAILED(timeline_->get_EndTime(&end)) || end.Duration != toTimeSpan(duration).Duration
+            || FAILED(timeline_->get_MinSeekTime(&minimum))
+            || minimum.Duration != toTimeSpan(state_.canSeek ? 0 : expectedPosition).Duration
+            || FAILED(timeline_->get_MaxSeekTime(&maximum))
+            || maximum.Duration != toTimeSpan(state_.canSeek ? duration : expectedPosition).Duration
+            || FAILED(timeline_->get_Position(&position))
+            || position.Duration != toTimeSpan(expectedPosition).Duration)
+            return QStringLiteral("SMTC timeline readback failed");
+        return {};
+    }
 private:
     bool attach() {
         if (controls_) return true;
@@ -380,17 +438,23 @@ private:
         controls_->put_IsEnabled(true);
     }
     void reset() {
+        resetError_.clear();
+        auto checked = [this](HRESULT result) {
+            if (FAILED(result) && resetError_.isEmpty())
+                resetError_ = QStringLiteral("SMTC reset failed: HRESULT 0x%1")
+                    .arg(quint32(result), 8, 16, QLatin1Char('0'));
+        };
         if (context_) context_->epoch.store(0);
         if (controls_) {
-            controls_->put_IsEnabled(false);
-            controls_->put_PlaybackStatus(Closed);
-            if (buttonsRegistered_) controls_->remove_ButtonPressed(buttonToken_);
+            checked(controls_->put_IsEnabled(false));
+            checked(controls_->put_PlaybackStatus(Closed));
+            if (buttonsRegistered_) checked(controls_->remove_ButtonPressed(buttonToken_));
         }
         if (controls2_ && positionRegistered_)
-            controls2_->remove_PlaybackPositionChangeRequested(positionToken_);
+            checked(controls2_->remove_PlaybackPositionChangeRequested(positionToken_));
         if (updater_) {
-            updater_->ClearAll();
-            updater_->Update();
+            checked(updater_->ClearAll());
+            checked(updater_->Update());
         }
         buttonsRegistered_ = false;
         positionRegistered_ = false;
@@ -419,6 +483,7 @@ private:
     bool positionRegistered_ = false;
     quint64 metadataEpoch_ = 0;
     QString title_, artist_;
+    QString resetError_;
     EventRegistrationToken buttonToken_{}, positionToken_{};
     ComPtr<ISystemMediaTransportControls> controls_;
     ComPtr<ISystemMediaTransportControls2> controls2_;
@@ -431,4 +496,51 @@ private:
 
 std::unique_ptr<SystemMediaBackend> createSystemMediaBackend(SystemMediaCallback callback) {
     return std::make_unique<WindowsMediaBackend>(std::move(callback));
+}
+
+QString verifyWindowsSystemMediaBackend() {
+    // A normal hidden HWND supports GetForWindow; HWND_MESSAGE does not.
+    // No account, artwork, user database or persistent state is involved.
+    const HWND window = CreateWindowExW(0, L"STATIC", L"BBHouse offline SMTC verification",
+        WS_OVERLAPPED, 0, 0, 16, 16, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!window) return QStringLiteral("SMTC fixture window creation failed");
+    struct WindowScope { HWND handle; ~WindowScope() { DestroyWindow(handle); } } scope{window};
+    WindowsMediaBackend backend([](SystemMediaCommand, double, quint64) {});
+    backend.setWindow(reinterpret_cast<quintptr>(window));
+    SystemMediaState state;
+    state.active = true;
+    state.session = 1;
+    state.title = QStringLiteral("BBHouse offline fixture");
+    state.artist = QStringLiteral("Deployment verification");
+    state.duration = 60;
+    state.position = 5;
+    state.canSeek = true;
+    state.canNext = true;
+    auto verify = [&] {
+        backend.update(state);
+        return backend.verificationError();
+    };
+    QString error = verify();
+    if (!error.isEmpty()) return error;
+    state.paused = false;
+    state.position = 10;
+    state.rate = 1.5;
+    state.canPrevious = true;
+    error = verify();
+    if (!error.isEmpty()) return error;
+    state.buffering = true;
+    state.canSeek = false;
+    error = verify();
+    if (!error.isEmpty()) return error;
+    backend.update(SystemMediaState{});
+    error = backend.verificationError();
+    if (!error.isEmpty()) return error;
+    // Reattach catches stale registrations and objects after reset.
+    ++state.session;
+    state.buffering = false;
+    state.title = QStringLiteral("BBHouse second offline fixture");
+    error = verify();
+    if (!error.isEmpty()) return error;
+    backend.update(SystemMediaState{});
+    return backend.verificationError();
 }

@@ -7,6 +7,10 @@ import bbhouse
 FluPage {
     id: page
     padding: 0
+    property var navigationState: null
+    property bool initialShowingLibrary: false
+    property bool stateReady: false
+    property real pendingScrollOffset: -1
     property string searchQuery: ""
     property bool showingLibrary: false
     readonly property var sourceItems: showingLibrary ? DownloadController.library : DownloadController.downloading
@@ -24,16 +28,32 @@ FluPage {
     readonly property int columnCount: Math.max(1, Math.floor((width - 48 + 16) / 316))
     readonly property int gridWidth: columnCount * 316 - 16
     onColumnCountChanged: Qt.callLater(masonry.relayout)
-    onSearchQueryChanged: selectPage(1)
+    onSearchQueryChanged: if (stateReady) selectPage(1)
     onShowingLibraryChanged: {
+        if (!stateReady) return
         selectPage(1)
         if (showingLibrary) DownloadController.refreshLibrary()
     }
-    onTotalPagesChanged: if (pageIndex > totalPages) selectPage(totalPages)
-    onVisibleChanged: if (visible) DownloadController.refreshLibrary()
-    Component.onCompleted: DownloadController.refreshLibrary()
+    onTotalPagesChanged: if (stateReady && pageIndex > totalPages) selectPage(totalPages)
+    Component.onCompleted: {
+        var saved = navigationState ? navigationState.value : ({})
+        showingLibrary = saved.showingLibrary !== undefined ? saved.showingLibrary : initialShowingLibrary
+        searchQuery = saved.searchQuery || ""
+        DownloadController.refreshLibrary()
+        pageIndex = Math.max(1, Math.min(Number(saved.pageIndex || 1), totalPages))
+        pendingScrollOffset = Number(saved.scrollOffset || 0)
+        stateReady = true
+        Qt.callLater(masonry.relayout)
+    }
+    Component.onDestruction: {
+        if (navigationState && stateReady) navigationState.value = {
+            showingLibrary: showingLibrary, searchQuery: searchQuery, pageIndex: pageIndex,
+            scrollOffset: pendingScrollOffset >= 0 ? pendingScrollOffset : Math.max(0, scroll_view.contentY)
+        }
+    }
 
     function selectPage(index) {
+        pendingScrollOffset = -1
         pageIndex = Math.max(1, Math.min(index, totalPages))
         scroll_view.contentY = 0
     }
@@ -166,6 +186,7 @@ FluPage {
     }
     Flickable {
         id: scroll_view
+        objectName: "downloadScrollView"
         anchors { left: parent.left; right: parent.right; top: toolbar.bottom; bottom: pagination.top;
             leftMargin: 24; rightMargin: 24; topMargin: 16; bottomMargin: 12 }
         clip: true
@@ -191,6 +212,11 @@ FluPage {
                     heights[col] += card.height + 16
                 }
                 contentHeight = Math.max(0, Math.max.apply(null, heights) - 16)
+                if (page.stateReady && page.pendingScrollOffset >= 0 && scroll_view.height > 0) {
+                    scroll_view.contentY = Math.max(0, Math.min(page.pendingScrollOffset,
+                                                               scroll_view.contentHeight - scroll_view.height))
+                    page.pendingScrollOffset = -1
+                }
             }
             onWidthChanged: Qt.callLater(relayout)
             Repeater {

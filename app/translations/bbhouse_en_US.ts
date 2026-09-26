@@ -4,8 +4,8 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <source>B站历史记录</source>
-        <translation>Bilibili History</translation>
+        <source>BBHouse</source>
+        <translation>BBHouse</translation>
     </message>
     <message>
         <source>动态</source>
@@ -695,6 +695,12 @@
 </context>
 <context>
     <name>SettingsPage</name>
+    <message><source>后台页面保留时间</source><translation>Keep background pages for</translation></message>
+    <message><source>1 分钟</source><translation>1 minute</translation></message>
+    <message><source>5 分钟</source><translation>5 minutes</translation></message>
+    <message><source>10 分钟</source><translation>10 minutes</translation></message>
+    <message><source>30 分钟</source><translation>30 minutes</translation></message>
+    <message><source>离开页面后超时释放内存，返回时重新加载。下载、历史同步和播放继续运行。</source><translation>Pages release memory after this time away and reload when reopened. Downloads, history sync, and playback keep running.</translation></message>
     <message>
         <source>设置</source>
         <translation>Settings</translation>
@@ -748,8 +754,8 @@
         <translation>About</translation>
     </message>
     <message>
-        <source>B站历史记录</source>
-        <translation>Bilibili History</translation>
+        <source>BBHouse</source>
+        <translation>BBHouse</translation>
     </message>
     <message>
         <source>版本 %1</source>
@@ -768,8 +774,8 @@
         <translation>https://github.com/endcloud/bbhouse-qt</translation>
     </message>
     <message>
-        <source>B站历史记录 版本 %1(Qt 6 · FluentUI · libmpv)</source>
-        <translation>Bilibili History version %1 (Qt 6 · FluentUI · libmpv)</translation>
+        <source>BBHouse 版本 %1(Qt 6 · FluentUI · libmpv)</source>
+        <translation>BBHouse version %1 (Qt 6 · FluentUI · libmpv)</translation>
     </message>
     <message>
         <source>已复制到剪贴板</source>
@@ -2833,8 +2839,8 @@
         <translation>About</translation>
     </message>
     <message>
-        <source>B站历史记录</source>
-        <translation>Bilibili History</translation>
+        <source>BBHouse</source>
+        <translation>BBHouse</translation>
     </message>
     <message>
         <source>Copyright © 2026 shizi</source>
@@ -2849,8 +2855,8 @@
         <translation>A third-party Bilibili player built with Qt / QML, with history sync and online and local playback.</translation>
     </message>
     <message>
-        <source>B站历史记录 版本 %1(Qt 6 · FluentUI · libmpv)</source>
-        <translation>Bilibili History version %1 (Qt 6 · FluentUI · libmpv)</translation>
+        <source>BBHouse 版本 %1(Qt 6 · FluentUI · libmpv)</source>
+        <translation>BBHouse version %1 (Qt 6 · FluentUI · libmpv)</translation>
     </message>
     <message>
         <source>复制版本信息</source>

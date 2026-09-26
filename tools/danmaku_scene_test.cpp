@@ -16,6 +16,9 @@
 #include <memory>
 #include <vector>
 
+struct LifetimeMarker {};
+Q_DECLARE_METATYPE(std::shared_ptr<LifetimeMarker>)
+
 static QVariantMap entry(int i, int type = 5) {
     return {{"time", 0}, {"type", type}, {"message", QStringLiteral("弹幕测试 中文 Text %1").arg(i)}, {"fontSize", 25}};
 }
@@ -262,6 +265,20 @@ int main(int argc, char **argv) {
         engine->setDensityLimit(0);
         engine->reset(0);
         check(settle(8), "removing density restriction restores original admission");
+    }
+    {
+        auto marker = std::make_shared<LifetimeMarker>();
+        std::weak_ptr<LifetimeMarker> weak = marker;
+        auto value = entry(42);
+        value.insert("lifetimeMarker", QVariant::fromValue(marker));
+        engine->setMergeSimilar(true);
+        engine->loadEntries({value});
+        marker.reset();
+        value.clear();
+        check(settle(1), "merged lifetime fixture renders its current video");
+        engine->loadEntries({});
+        check(settle(0) && weak.expired(),
+              "clearing merged video releases payload including finished future result");
     }
     {
         auto transient = std::make_unique<DanmakuEngine>();

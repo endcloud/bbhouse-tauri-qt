@@ -4,11 +4,13 @@
 #include <QObject>
 #include <QVariant>
 #include <QNetworkProxy>
+#include <memory>
 
 // 应用偏好持久化(QSettings IniFormat:%APPDATA%/shizi/bbhouse-qt.ini)。
 // 对齐原 WinUI 项目的 AppPreferences 语义:主题/语言即时写穿,存储值即末次状态。
 class AppPreferences : public QObject {
     Q_OBJECT
+    Q_PROPERTY(int pageCacheMinutes READ pageCacheMinutes WRITE setPageCacheMinutes NOTIFY pageCacheMinutesChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QString danmakuImplementation READ danmakuImplementation WRITE setDanmakuImplementation NOTIFY danmakuImplementationChanged)
@@ -25,6 +27,10 @@ class AppPreferences : public QObject {
     Q_PROPERTY(QString proxyPassword READ proxyPassword NOTIFY proxySettingsChanged)
    public:
     static AppPreferences *instance();
+    ~AppPreferences() override;
+
+    int pageCacheMinutes() const;
+    void setPageCacheMinutes(int value);
 
     // "system" | "zh_CN" | "en_US"
     QString language() const;
@@ -66,6 +72,7 @@ class AppPreferences : public QObject {
     Q_INVOKABLE void setValue(const QString &key, const QVariant &value);
 
    signals:
+    void pageCacheMinutesChanged();
     void languageChanged();
     void themeChanged();
     void danmakuImplementationChanged();
@@ -80,7 +87,7 @@ class AppPreferences : public QObject {
    private:
     explicit AppPreferences(QObject *parent = nullptr);
     class Private;
-    Private *d;
+    std::unique_ptr<Private> d;
 };
 
 #endif  // APP_PREFERENCES_H

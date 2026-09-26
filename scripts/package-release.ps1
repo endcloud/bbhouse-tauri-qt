@@ -1,198 +1,222 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-  构建 Windows Release 交付包:deploy → 精简 → 自包含冒烟 → 输出 <项目名>[<短提交号>]。
+  生成包含运行及下载依赖的精简 Windows Release 包，并隔离验证。
 .DESCRIPTION
-  1) 用 Qt Creator 同款套件(MinGW 13.1.0 + Qt 6.11.1 mingw_64)配置并构建 Release;
-  2) 走 CMake 的 deploy 目标生成 build/deploy;
-  3) 复制到 build/release-stage 后按精简清单剔除未用文件(见 $dropDirs/$dropFiles 注释);
-  4) 清空 PATH 做无头冒烟,验证包自包含可启动、QML 无报错;
-  5) 复制为 <OutDir>\<Name>[<短提交号>],并在发布目录再跑一次冒烟。
-  运行期数据用 BBHOUSE_DATA_DIR 隔离到 build 内,不动用户真实数据库。
-.EXAMPLE
-  pwsh -File scripts/package-release.ps1
-  pwsh -File scripts/package-release.ps1 -OutDir E:\rel -KeepOpenGlSw -Force
+  输出 <OutDir>\BBHouse[<提交号>]，重名附时间戳，不删除已有发布目录。
+  使用 -StageOnly 在 build/release-stage 内验证；提交后去掉该参数正式输出。
+  FFmpeg 建议指定静态 essentials 版，aria2c 指定静态 Windows x64 版。
+  VulkanPath 指向可再分发 Vulkan Loader；curl 使用 Windows 10/11 系统组件。
 #>
 [CmdletBinding()]
 param(
-    [string]$OutDir = "D:\release",
+    [string]$OutDir = 'D:\release',
     [string]$Name,
+    [string]$FfmpegPath,
+    [string]$Aria2Path,
+    [string]$VulkanPath = "$env:SystemRoot\System32\vulkan-1.dll",
+    [int]$Jobs = 6,
     [switch]$KeepOpenGlSw,
-    [switch]$SkipSmoke,
+    [switch]$SkipBuild,
+    [switch]$StageOnly,
     [switch]$Force
 )
-
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$build = Join-Path $root "build"
-$deploy = Join-Path $build "deploy"
-$stage = Join-Path $build "release-stage"
-
-# Qt Creator 同款套件;换机器/升级 Qt 时改这三行(或直接用 CMakePresets.json 的 preset)
-$qtBin = "C:\Qt\6.11.1\mingw_64\bin"
-$mingwBin = "C:\Qt\Tools\mingw1310_64\bin"
-$ninjaBin = "C:\Qt\Tools\Ninja"
-$cmake = "C:\Qt\Tools\CMake_64\bin\cmake.exe"
-
-foreach ($p in @($qtBin, $mingwBin, $ninjaBin, $cmake)) {
-    if (-not (Test-Path $p)) { throw "缺少路径: $p(按需修改脚本顶部)" }
+$build = Join-Path $root 'build'
+$deploy = Join-Path $build 'deploy'
+$stage = Join-Path $build 'release-stage'
+if (Test-Path -LiteralPath $stage) {
+    $stage += '_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff')
 }
-$env:Path = "$mingwBin;$qtBin;$ninjaBin;$env:Path"
-
-if (-not $Name) {
-    $hash = (& git -C $root rev-parse --short HEAD).Trim()
-    if (-not $hash) { throw "取提交号失败(git rev-parse)" }
-    $Name = "bbhouse-qt[$hash]"
+$projectText = Get-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Raw
+if ($projectText -notmatch 'project\(bbhouse-qt VERSION ([\d.]+)') { throw '无法读取应用版本' }
+$version = $Matches[1]
+$qtBin = 'C:\Qt\6.11.1\mingw_64\bin'
+$mingwBin = 'C:\Qt\Tools\mingw1310_64\bin'
+$cmake = 'C:\Qt\Tools\CMake_64\bin\cmake.exe'
+$python = (Get-Command python -ErrorAction Stop).Source
+if (-not $FfmpegPath) { $FfmpegPath = (Get-Command ffmpeg -ErrorAction Stop).Source }
+if (-not $Aria2Path) { $Aria2Path = (Get-Command aria2c -ErrorAction Stop).Source }
+foreach ($path in @($cmake, $FfmpegPath, $Aria2Path, $VulkanPath)) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "缺少文件: $path" }
 }
-$target = Join-Path $OutDir $Name
-
-Write-Host "== 1/4 配置 + 构建 + deploy =="
-& $cmake -S $root -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release
-if ($LASTEXITCODE -ne 0) { throw "cmake 配置失败" }
-& $cmake --build $build --target deploy -j ([Environment]::ProcessorCount)
-if ($LASTEXITCODE -ne 0) { throw "deploy 目标失败" }
-
-Write-Host "== 2/4 精简 =="
-if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-Copy-Item -LiteralPath $deploy -Destination $stage -Recurse
-
-# 整目录剔除
-$dropDirs = @(
-    "translations",                                  # 程序只加载自带 :/i18n/bbhouse_en_US.qm,Qt 的 qt_*.qm 从不加载
-    "qmltooling",                                    # QML 调试工具
-    "generic",                                       # TUIO 触摸输入(未用)
-    "vectorimageformats",                            # Lottie 矢量图(未用)
-    "networkinformation",                            # QNetworkListManager(Neteork 状态可自降级)
-    "styles",                                        # qmodernwindowsstyle(QT_QUICK_CONTROLS_STYLE=Basic)
-    "qml\QtQuick\NativeStyle",                       # 程序固定 QT_QUICK_CONTROLS_STYLE=Basic
-    "qml\QtQuick\Controls\FluentWinUI3",
-    "qml\QtQuick\Controls\Windows",
-    "qml\QtQuick\Controls\Material",
-    "qml\QtQuick\Controls\Imagine",
-    "qml\QtQuick\Controls\Fusion",
-    "qml\QtQuick\Controls\Universal"
-)
-# 单文件剔除
-$dropFiles = @(
-    "fluentuiplugin.dll",                            # exe 导入表里没有它(objdump 核对),QML 走 FluentUI\ 下那份
-    "FluentUI\plugins.qmltypes",                     # QML 元数据,仅开发工具用
-    "FluentUI\libfluentuiplugin.a",                  # 导入库,仅链接期用
-    "Qt6Svg.dll", "iconengines\qsvgicon.dll", "imageformats\qsvg.dll",   # 工程内无 svg 资源
-    "tls\qcertonlybackend.dll",                      # 只留 Windows 原生 qschannelbackend
-    "Qt6Lottie.dll", "Qt6LottieVectorImageGenerator.dll", "Qt6QuickVectorImageGenerator.dll",
-    "Qt6Quick3DUtils.dll",
-    "Qt6QuickControls2Fusion.dll", "Qt6QuickControls2FusionStyleImpl.dll",
-    "Qt6QuickControls2Imagine.dll", "Qt6QuickControls2ImagineStyleImpl.dll",
-    "Qt6QuickControls2Material.dll", "Qt6QuickControls2MaterialStyleImpl.dll",
-    "Qt6QuickControls2Universal.dll", "Qt6QuickControls2UniversalStyleImpl.dll",
-    "Qt6QuickControls2FluentWinUI3StyleImpl.dll", "Qt6QuickControls2WindowsStyleImpl.dll"
-)
-if (-not $KeepOpenGlSw) {
-    $dropFiles += "opengl32sw.dll"                   # 软件 OpenGL 回退:仅无显卡驱动/远程桌面才需要
+if ($Jobs -lt 1) { throw 'Jobs 必须为正数' }
+$hash = (& git -C $root rev-parse --short HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $hash) { throw '读取 Git 提交号失败' }
+if (-not $Name) { $Name = "BBHouse[$hash]" }
+if ($Name -in @('.', '..') -or $Name.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+    throw 'Name 必须是单个合法目录名称'
 }
-# 插件白名单:SQLite、封面/头像用的图片格式(jpg/webp;avif 无插件,程序走 CDN 转码)
-$keepSqlDrivers = @("qsqlite.dll")
-$keepImageFormats = @("qjpeg.dll", "qwebp.dll")
-# 保留项说明:Qt6QuickShapes 虽未被本项目 QML 直接使用,但 FluentUI 的 FluTour.qml 里
-# `import QtQuick.Shapes`,删掉会让该控件运行期才报模块缺失(只在 0.38MB),故保留。
+if ($Force) { Write-Warning '-Force 不再删除已有发布目录；同名目录自动追加时间戳。' }
 
-foreach ($d in $dropDirs) {
-    $p = Join-Path $stage $d
-    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
-}
-foreach ($f in $dropFiles) {
-    $p = Join-Path $stage $f
-    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
-}
-foreach ($dir in @("sqldrivers", "imageformats")) {
-    $keep = if ($dir -eq "sqldrivers") { $keepSqlDrivers } else { $keepImageFormats }
-    $p = Join-Path $stage $dir
-    if (-not (Test-Path -LiteralPath $p)) { continue }
-    Get-ChildItem -LiteralPath $p -File | Where-Object { $keep -notcontains $_.Name } |
-        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+function Remove-ProjectArtifact([string]$path) {
+    $full = [IO.Path]::GetFullPath($path)
+    $stagePrefix = [IO.Path]::GetFullPath($stage) + [IO.Path]::DirectorySeparatorChar
+    if (-not $full.StartsWith($stagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "拒绝裁剪本次暂存目录外路径: $full"
+    }
+    if (Test-Path -LiteralPath $full) {
+        if ((Get-Item -LiteralPath $full).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "拒绝清理重解析点: $full"
+        }
+        Remove-Item -LiteralPath $full -Recurse
+    }
 }
 
-function Invoke-SelfContainedSmoke([string]$dir) {
-    # 清空 PATH:只用包内文件,缺 DLL/插件的包会在这里暴露。
-    # 用默认平台(不是 offscreen):这样"进程活着但窗口没起来"也能被发现(本项目踩过:
-    # FluRouter 单例被 qmldir 当普通类型 → navigate 报错 → 首个窗口永不创建)。
-    $savedPath = $env:Path
-    $env:Path = "$env:SystemRoot\system32;$env:SystemRoot"
-    $env:BBHOUSE_SMOKE = "1"
-    $env:BBHOUSE_SMOKE_NAV = "LocalHistoryPage.qml,SettingsPage.qml"
-    $env:BBHOUSE_DATA_DIR = Join-Path $build "smoke-data"
-    # 无控制台时 Qt 默认把日志丢给调试器,重定向就抓不到;强制走 stderr
-    $env:QT_ASSUME_STDERR_HAS_CONSOLE = "1"
-    $log = Join-Path $build "smoke-err.log"
-    $outLog = Join-Path $build "smoke-out.log"
-    $windowSeen = $false
+function Invoke-IsolatedProcess([string]$file, [string[]]$arguments, [string]$workingDirectory) {
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $file
+    $psi.WorkingDirectory = $workingDirectory
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($arg in $arguments) { $psi.ArgumentList.Add($arg) }
+    foreach ($key in @($psi.Environment.Keys)) {
+        if ($key -match '^(QT_|QML|BBHOUSE_|MPV_)') { $psi.Environment.Remove($key) | Out-Null }
+    }
+    $psi.Environment['PATH'] = "$env:SystemRoot\System32;$env:SystemRoot"
+    $psi.Environment['QT_ASSUME_STDERR_HAS_CONSOLE'] = '1'
+    $process = [Diagnostics.Process]::Start($psi)
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
     try {
-        # 用 ProcessStartInfo 直接起进程:Start-Process 会把 "<项目名>[<提交号>]" 里的
-        # [..] 当通配符,路径解析失败。
-        $psi = [System.Diagnostics.ProcessStartInfo]::new()
-        $psi.FileName = Join-Path $dir "bbhouse-qt.exe"
-        $psi.WorkingDirectory = $dir
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardError = $true
-        $psi.RedirectStandardOutput = $true
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        # 先轮询窗口(输出量很小,不会填满管道),再收尾读日志
-        for ($i = 0; $i -lt 40; $i++) {
-            Start-Sleep -Milliseconds 250
-            $proc.Refresh()
-            if ($proc.MainWindowHandle -ne 0) { $windowSeen = $true; break }
-            if ($proc.HasExited) { break }
+        if (-not $process.WaitForExit(45000)) {
+            $process.Kill($true)
+            $process.WaitForExit()
+            throw "验证超时: $file"
         }
-        # 退出慢不代表包有问题:收尾要等后台 HTTP 任务(QThreadPool::waitForDone),
-        # 网络卡顿时可能超过 30s。判定标准是"窗口出现 + 日志无 QML 错误"。
-        $exitedInTime = $proc.WaitForExit(45000)
-        if (-not $exitedInTime) {
-            Write-Warning ("冒烟进程 45s 未退出(窗口已出现=$windowSeen),按警告处理并结束它: {0}" -f $psi.FileName)
-            $proc.Kill()
-        }
-        $out2 = $proc.StandardOutput.ReadToEnd()
-        $err2 = $proc.StandardError.ReadToEnd()
-        $code = if ($exitedInTime) { $proc.ExitCode } else { 0 }
-        $err2 | Out-File -LiteralPath $log -Encoding utf8
-        $out2 | Out-File -LiteralPath $outLog -Encoding utf8
-    } finally {
-        $env:Path = $savedPath
-        foreach ($v in @("BBHOUSE_SMOKE", "BBHOUSE_SMOKE_NAV", "BBHOUSE_DATA_DIR", "QT_ASSUME_STDERR_HAS_CONSOLE")) {
-            Remove-Item "Env:$v" -ErrorAction SilentlyContinue
+        $output = $stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) { throw "验证失败(exit=$($process.ExitCode)): $output" }
+        return $output
+    } finally { $process.Dispose() }
+}
+
+function Test-Package([string]$directory, [string]$label) {
+    foreach ($executable in @('BBHouse.exe', 'bbhouse-history-service.exe')) {
+        $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $directory $executable))
+        if ($info.ProductName -ne 'BBHouse' -or $info.ProductVersion -ne $version -or $info.FileVersion -ne $version) {
+            throw "程序名称或版本与源码不一致: $executable"
         }
     }
-    $out = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue) +
-           @(Get-Content -LiteralPath $outLog -ErrorAction SilentlyContinue)
-    $bad = $out | Select-String -Pattern "is not installed|Cannot load library|cannot be loaded|Failed to load|no such file|QQmlApplicationEngine failed|TypeError|is not a function|ReferenceError|Unable to assign"
-    if ($code -ne 0) { throw "冒烟失败(exit=$code,$log):`n$($out | Select-Object -Last 20 | Out-String)" }
-    if ($bad) { throw "冒烟发现 QML/插件缺失($log):`n$($bad | Out-String)" }
-    if (-not $windowSeen) { throw "冒烟期间没有出现窗口(进程可启动但界面没起来,$log):`n$($out | Select-Object -Last 20 | Out-String)" }
-    Write-Host ("   冒烟通过(exit=0,窗口已出现,日志 {0})" -f $log)
+    $output = Invoke-IsolatedProcess (Join-Path $directory 'BBHouse.exe') @(
+        '--deployment-smoke-test', '--scratch-dir', $build) $directory
+    if ($output -notmatch 'DEPLOYMENT_SMOKE_OK:') { throw "隔离验证未完成: $output" }
+    if ($output -notmatch 'DEPLOYMENT_VIDEO_OK:') { throw "原生视频验证未完成: $output" }
+    if (-not $output.Contains("DEPLOYMENT_IDENTITY: BBHouse $version")) { throw "运行时应用名称或版本不一致: $output" }
+    if ($output -match 'Windows system media .*failed|Windows system media controls unavailable') {
+        throw "Windows 系统媒体验证失败: $output"
+    }
+    if ($output -match 'is not installed|Cannot load library|QQmlApplicationEngine failed|TypeError|ReferenceError|Unable to assign') {
+        throw "QML/依赖验证失败: $output"
+    }
+    $output | Set-Content -LiteralPath (Join-Path $build "release-$label-smoke.log") -Encoding utf8
+    & $python (Join-Path $root 'tools/windows_package_check.py') $directory --scratch $build --report (Join-Path $build "release-$label-check.json")
+    if ($LASTEXITCODE -ne 0) { throw 'PE 依赖或外部工具验证失败' }
+    Write-Host "隔离部署验证通过: $label"
 }
 
-if (-not $SkipSmoke) {
-    Write-Host "== 3/4 自包含冒烟(暂存目录) =="
-    Invoke-SelfContainedSmoke $stage
-} else {
-    Write-Host "== 3/4 冒烟已跳过(-SkipSmoke) =="
+if (-not $SkipBuild) {
+    $savedPath = $env:PATH
+    try {
+        $env:PATH = "$mingwBin;$qtBin;C:\Qt\Tools\Ninja;$savedPath"
+        & $cmake -S $root -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        if ($LASTEXITCODE -ne 0) { throw 'CMake 配置失败' }
+        & $cmake --build $build --target deploy -j $Jobs
+        if ($LASTEXITCODE -ne 0) { throw 'Release deploy 构建失败' }
+    } finally { $env:PATH = $savedPath }
 }
+if (-not (Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') -SimpleMatch 'CMAKE_BUILD_TYPE:STRING=Release')) {
+    throw '只允许打包 Release 构建'
+}
+foreach ($required in @('BBHouse.exe','bbhouse-history-service.exe','libmpv-2.dll','FluentUI\fluentuiplugin.dll','LICENSE','THIRD_PARTY_NOTICES.md')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $deploy $required))) { throw "deploy 缺少 $required" }
+}
+if (Test-Path -LiteralPath $stage) { throw "暂存目录已存在: $stage" }
+Copy-Item -LiteralPath $deploy -Destination $stage -Recurse
+# FluentUI's embedded table control imports this module; windeployqt only
+# scans the application's loose QML and cannot discover that embedded import.
+Copy-Item -LiteralPath (Join-Path $qtBin 'Qt6LabsQmlModels.dll') -Destination $stage
+New-Item -ItemType Directory -Force -Path (Join-Path $stage 'qml/Qt/labs') | Out-Null
+Copy-Item -LiteralPath (Join-Path $qtBin '../qml/Qt/labs/qmlmodels') -Destination (Join-Path $stage 'qml/Qt/labs/qmlmodels') -Recurse
+$beforeBytes = (Get-ChildItem -LiteralPath $stage -Recurse -File | Measure-Object Length -Sum).Sum
 
-Write-Host "== 4/4 输出到发布目录 =="
+$dropDirs = @('translations','qmltooling','generic','vectorimageformats','networkinformation','styles',
+    'qml\QtQuick\NativeStyle','qml\QtQuick\Controls\FluentWinUI3','qml\QtQuick\Controls\Windows',
+    'qml\QtQuick\Controls\Material','qml\QtQuick\Controls\Imagine','qml\QtQuick\Controls\Fusion',
+    'qml\QtQuick\Controls\Universal','qml\FluentUI')
+$dropFiles = @('fluentuiplugin.dll','Qt6Svg.dll','iconengines\qsvgicon.dll','imageformats\qsvg.dll',
+    'tls\qcertonlybackend.dll','tls\qopensslbackend.dll','Qt6Lottie.dll','Qt6LottieVectorImageGenerator.dll',
+    'Qt6QuickVectorImageGenerator.dll','Qt6Quick3DUtils.dll','Qt6QuickControls2Fusion.dll',
+    'Qt6QuickControls2FusionStyleImpl.dll','Qt6QuickControls2Imagine.dll','Qt6QuickControls2ImagineStyleImpl.dll',
+    'Qt6QuickControls2Material.dll','Qt6QuickControls2MaterialStyleImpl.dll','Qt6QuickControls2Universal.dll',
+    'Qt6QuickControls2UniversalStyleImpl.dll','Qt6QuickControls2FluentWinUI3StyleImpl.dll','Qt6QuickControls2WindowsStyleImpl.dll')
+if (-not $KeepOpenGlSw) { $dropFiles += 'opengl32sw.dll' }
+foreach ($relative in ($dropDirs + $dropFiles)) { Remove-ProjectArtifact (Join-Path $stage $relative) }
+foreach ($dir in @('sqldrivers','imageformats')) {
+    $keep = if ($dir -eq 'sqldrivers') { @('qsqlite.dll') } else { @('qjpeg.dll','qwebp.dll') }
+    Get-ChildItem -LiteralPath (Join-Path $stage $dir) -File | Where-Object Name -NotIn $keep |
+        ForEach-Object { Remove-ProjectArtifact $_.FullName }
+}
+# FluentUI's qmldir prefers embedded qrc resources. Retain the map and plugin.
+Get-ChildItem -LiteralPath (Join-Path $stage 'FluentUI') -Force | Where-Object Name -NotIn @('qmldir','fluentuiplugin.dll') |
+    ForEach-Object { Remove-ProjectArtifact $_.FullName }
+Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Extension -in @('.qmltypes','.a','.prl','.pdb','.debug','.qrc') } |
+    ForEach-Object { Remove-ProjectArtifact $_.FullName }
+foreach ($module in Get-ChildItem -LiteralPath $stage -Recurse -File -Filter qmldir) {
+    $lines = Get-Content -LiteralPath $module.FullName | Where-Object { $_ -notmatch '^typeinfo ' }
+    $lines | Set-Content -LiteralPath $module.FullName -Encoding utf8NoBOM
+}
+foreach ($relative in @('BBHouse.exe','bbhouse-history-service.exe','FluentUI\fluentuiplugin.dll')) {
+    & (Join-Path $mingwBin 'strip.exe') --strip-unneeded (Join-Path $stage $relative)
+    if ($LASTEXITCODE -ne 0) { throw "去除符号失败: $relative" }
+}
+New-Item -ItemType Directory -Force -Path (Join-Path $stage 'tools') | Out-Null
+Copy-Item -LiteralPath $FfmpegPath -Destination (Join-Path $stage 'tools/ffmpeg.exe')
+Copy-Item -LiteralPath $Aria2Path -Destination (Join-Path $stage 'tools/aria2c.exe')
+Copy-Item -LiteralPath $VulkanPath -Destination (Join-Path $stage 'vulkan-1.dll')
+@'
+[Paths]
+Prefix=.
+Plugins=.
+QmlImports=qml
+'@ | Set-Content -LiteralPath (Join-Path $stage 'qt.conf') -Encoding utf8NoBOM
+Test-Package $stage 'stage'
+$afterBytes = (Get-ChildItem -LiteralPath $stage -Recurse -File | Measure-Object Length -Sum).Sum
+$toolsBytes = (Get-Item -LiteralPath (Join-Path $stage 'tools/ffmpeg.exe'),(Join-Path $stage 'tools/aria2c.exe'),(Join-Path $stage 'vulkan-1.dll') | Measure-Object Length -Sum).Sum
+$summary = "原 deploy: $([math]::Round($beforeBytes/1MB,1)) MiB; 裁剪节省: $([math]::Round(($beforeBytes+$toolsBytes-$afterBytes)/1MB,1)) MiB; 完整暂存: $([math]::Round($afterBytes/1MB,1)) MiB"
+Write-Host $summary
+if ($StageOnly) { Write-Host "已验证暂存包: $stage"; return }
+if (& git -C $root status --porcelain --untracked-files=normal) { throw '正式输出前请先提交工作区，使目录提交号与源码一致；可先用 -StageOnly 验证。' }
+$target = Join-Path $OutDir $Name
 if (Test-Path -LiteralPath $target) {
-    if (-not $Force) { throw "目标已存在: $target(加 -Force 覆盖,或用 -Name 换名;删除项目外目录需你确认)" }
-    Remove-Item -LiteralPath $target -Recurse -Force
+    $target = Join-Path $OutDir ($Name + '_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
 }
+if (Test-Path -LiteralPath $target) { throw "目标已存在，请重试: $target" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Copy-Item -LiteralPath $stage -Destination $target -Recurse
-
-if (-not $SkipSmoke) {
-    Write-Host "   发布目录冒烟:"
-    Invoke-SelfContainedSmoke $target
+Test-Package $target 'published'
+$fullHash = (& git -C $root rev-parse HEAD).Trim()
+$manifest = @("# BBHouse $version Windows Release", '', "- 提交：$fullHash", "- 版本：$version", '- 平台：Windows 10/11 x64，需正常显卡驱动。',
+    '- 启动：双击 BBHouse.exe。账号/历史/配置不随包附带。',
+    '- 已包含 Qt、FluentUI、libmpv、Vulkan Loader、aria2 和 FFmpeg；curl 使用系统自带版本。',
+    '- 已通过视频像素/进度/关闭重开、Windows 原生媒体状态回读、隔离部署、PE 依赖及媒体合并/封面/本机下载验证；UI 和在线业务仍需手测。',
+    '- 许可证与来源见 THIRD_PARTY_NOTICES.md 和 licenses；现有公开分发授权事项见项目发布文档。', '', $summary)
+$manifest | Set-Content -LiteralPath (Join-Path $target '使用说明.md') -Encoding utf8
+$check = Get-Content -LiteralPath (Join-Path $build 'release-published-check.json') -Raw | ConvertFrom-Json
+$dependencyNotes = @('# 依赖与验证', '', "- 源码提交：$fullHash", "- x64 PE 文件：$($check.pe_images.Count)",
+    '- Qt 6.11.1 MinGW x64；运行库与插件已随包。', '- 所有非系统 PE 导入均已在包内解析。',
+    '- 文件校验值见 SHA256SUMS；原始来源及许可见 THIRD_PARTY_NOTICES.md。', '')
+foreach ($entry in $check.tool_versions.PSObject.Properties) { $dependencyNotes += "- $($entry.Value)" }
+$dependencyNotes += @('', '- 系统 curl 与显卡驱动由 Windows 提供。', '- 视频和原生系统媒体回归不替代 UI/在线业务手测；全量 CTest 遗留失败与本次交付记录见项目 doc/WindowsRelease起播闪退修复.md。')
+$dependencyNotes | Set-Content -LiteralPath (Join-Path $target '依赖清单.md') -Encoding utf8
+$hashLines = Get-ChildItem -LiteralPath $target -Recurse -File | Sort-Object FullName | ForEach-Object {
+    $relative = [IO.Path]::GetRelativePath($target, $_.FullName).Replace('\','/')
+    "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"
 }
-
-$files = Get-ChildItem -LiteralPath $target -Recurse -File
-$mb = [math]::Round(($files | Measure-Object -Sum Length).Sum / 1MB, 1)
-Write-Host ""
-Write-Host "包目录: $target"
-Write-Host "文件数: $($files.Count)"
-Write-Host "体积  : $mb MB"
+$hashLines | Set-Content -LiteralPath (Join-Path $target 'SHA256SUMS') -Encoding utf8NoBOM
+$files = @(Get-ChildItem -LiteralPath $target -Recurse -File)
+$size = ($files | Measure-Object Length -Sum).Sum
+Write-Host "发布完成: $target"
+Write-Host "文件数: $($files.Count); 总体积: $([math]::Round($size/1MB,2)) MiB ($size bytes)"

@@ -147,6 +147,13 @@ int main(int argc, char **argv) {
     std::unique_ptr<QObject> qmlImage(imageComponent.create());
     check(qmlImage && spinUntil([&] { return qmlImage->property("status").toInt() == 1; }),
           "Qt Quick loads revisioned local-file URL used by avatar bindings");
+    const auto beforeRelease = cache.resolve("100", {});
+    cache.releaseMemoryCache();
+    check(cache.resolve("100", {}) == beforeRelease,
+          "releasing memory metadata retains the seven-day disk avatar without network");
+    for (int i = 0; i < 600; ++i) cache.resolve(QString::number(1000 + i), {});
+    check(cache.resolve("100", {}) == beforeRelease,
+          "evicted avatar metadata reloads from disk after hundreds of authors");
     // An unavailable server must not prevent an expired persisted image from being returned.
     server.close();
     now += AvatarCache::LifetimeMs;

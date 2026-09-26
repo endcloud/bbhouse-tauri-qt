@@ -80,6 +80,7 @@ bool DynamicCardModel::setItems(const QVariantList &items) {
             }
         }
     }
+    if (rows_.isEmpty()) rows_.squeeze();
     if (previousCount != count()) emit countChanged();
     return changed;
 }

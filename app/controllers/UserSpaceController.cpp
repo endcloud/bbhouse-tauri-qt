@@ -11,7 +11,8 @@ void UserSpaceController::openSpace(const QString &midText, const QString &name,
     const qint64 mid = midText.toLongLong(&valid);
     if (!valid || mid <= 0) return;
     const bool changed = currentMid() != mid;
-    if (changed) {
+    const bool reloadProfile = changed || profile_.mid != mid;
+    if (reloadProfile) {
         profile_ = {};
         profile_.mid = mid;
         profile_.name = name;
@@ -20,7 +21,7 @@ void UserSpaceController::openSpace(const QString &midText, const QString &name,
         selectUp(mid);
         emit profileChanged();
     }
-    if (changed || (!profileBusy_ && profile_.name.isEmpty())) refreshProfile();
+    if (reloadProfile || (!profileBusy_ && profile_.name.isEmpty())) refreshProfile();
 }
 
 void UserSpaceController::refreshProfile() {
@@ -62,6 +63,16 @@ void UserSpaceController::finishProfile(quint64 generation, qint64 mid,
         profile_.sign = profile.sign;
         profile_.archiveCount = profile.archiveCount;
     }
+    emit profileChanged();
+    emit profileBusyChanged();
+}
+
+void UserSpaceController::releasePageCache() {
+    SpecialFollowController::releasePageCache();
+    ++profileGeneration_;
+    profile_ = {};
+    profileError_.clear();
+    profileBusy_ = false;
     emit profileChanged();
     emit profileBusyChanged();
 }

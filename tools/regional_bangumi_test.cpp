@@ -135,6 +135,13 @@ public:
               "proxy change rejects old cache result and restarts latest regional request with new snapshot");
         controller.finishSeasonFetch(controller.detailRequests.last(), {{"seasonId", 44}, {"regional", true}}, {});
         check(ready == 2, "new proxy detail result is published");
+        controller.seasonDetail(99);
+        const auto expiredDetail = controller.detailRequests.last();
+        controller.releasePageCache();
+        controller.finishSeasonFetch(expiredDetail, {{"seasonId", 99}}, {});
+        check(controller.pageItems().isEmpty() && controller.regionalItems_.isEmpty() &&
+              controller.seasonCache_.isEmpty() && controller.currentPage() == 0 && ready == 2,
+              "release discards regional and detail caches and rejects late season result");
         return failures ? 1 : 0;
     }
 };

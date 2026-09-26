@@ -1,4 +1,5 @@
 #include <QCoreApplication>
+#include <memory>
 #include <QDebug>
 #include <QDir>
 #include <QElapsedTimer>
@@ -37,6 +38,11 @@ int main(int argc, char **argv) {
     controller.loadPage(1);
     check(settle([&]{ return !controller.loading(); }) && controller.ready() && controller.loadError().isEmpty(),
           "failed initialization can be retried without restarting");
+    if (!controller.ready() || !controller.loadError().isEmpty()) {
+        qWarning() << "Fixture recovery failed:" << controller.loadError();
+        QThreadPool::globalInstance()->waitForDone();
+        return 1;
+    }
     HistoryStore store(dataPath + "/bilibili-history.sqlite3");
     const auto id = store.startSyncRun("manual");
     BilibiliHistoryPage entries;
@@ -62,6 +68,17 @@ int main(int argc, char **argv) {
     controller.loadPage(1);
     check(settle([&]{ return !controller.loading(); }) && !controller.loadError().isEmpty() && pageLoaded == retained && controller.videoCount() == 31,
           "read failure retains prior page and counts instead of publishing empty success");
+    // Constructor initialization and page reads may still be running here.
+    // Destruction must join before store/atomics are destroyed and cancel queued delivery.
+    int destroyedCallbacks = 0;
+    for (int i = 0; i < 8; ++i) {
+        auto shortLived = std::make_unique<HistoryController>();
+        QObject::connect(shortLived.get(), &HistoryController::pageLoaded, &app,
+                         [&](int, QVariantList, int) { ++destroyedCallbacks; });
+        shortLived->loadPage(1);
+        shortLived.reset();
+    }
     QThreadPool::globalInstance()->waitForDone(); app.processEvents();
+    check(destroyedCallbacks == 0, "destroyed history controllers cancel queued delivery safely");
     return failures ? 1 : 0;
 }

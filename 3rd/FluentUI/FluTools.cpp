@@ -256,6 +256,10 @@ QRect FluTools::desktopAvailableGeometry(QQuickWindow *window) {
 }
 
 QString FluTools::getWallpaperFilePath() {
+    return wallpaperFilePath();
+}
+
+QString FluTools::wallpaperFilePath() {
 #if defined(Q_OS_WIN)
     wchar_t path[MAX_PATH] = {};
     if (::SystemParametersInfoW(SPI_GETDESKWALLPAPER, MAX_PATH, path, FALSE) == FALSE) {
@@ -273,7 +277,7 @@ QString FluTools::getWallpaperFilePath() {
         args << "--dest=com.deepin.wm";
         args << "/com/deepin/wm";
         args << "com.deepin.wm.GetCurrentWorkspaceBackgroundForMonitor";
-        args << QString("string:'%1'").arg(currentTimestamp());
+        args << QString("string:'%1'").arg(QDateTime::currentMSecsSinceEpoch());
         process.start("dbus-send", args);
         process.waitForFinished();
         QByteArray result = process.readAllStandardOutput().trimmed();
@@ -295,9 +299,8 @@ QString FluTools::getWallpaperFilePath() {
         return "/System/Library/CoreServices/DefaultDesktop.heic";
     }
     return result;
-#else
-    return {};
 #endif
+    return {};
 }
 
 QColor FluTools::imageMainColor(const QImage &image, double bright) {

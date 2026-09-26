@@ -7,7 +7,16 @@ import "../js/Format.js" as Format
 FluPage {
     id: page
     padding: 0
-    property string searchQuery: ""
+    property string searchQuery: LiveController.searchText
+    property bool stateReady: false
+    property bool restorePending: true
+    function restoreScroll() {
+        if (!stateReady || !restorePending || room_grid.height <= 0) return
+        room_grid.forceLayout()
+        room_grid.contentY = room_grid.originY + Math.min(LiveController.scrollOffset,
+            Math.max(0, room_grid.contentHeight - room_grid.height))
+        restorePending = false
+    }
     readonly property var filteredItems: {
         var query = searchQuery.trim().toLowerCase()
         return LiveController.pool.filter(function(room) {
@@ -15,8 +24,22 @@ FluPage {
                          || String(room.uname).toLowerCase().indexOf(query) !== -1
         })
     }
-    onSearchQueryChanged: room_grid.positionViewAtBeginning()
-    Component.onCompleted: LiveController.ensureLoaded()
+    onSearchQueryChanged: {
+        if (!stateReady) return
+        LiveController.searchText = searchQuery
+        LiveController.scrollOffset = 0
+        restorePending = false
+        room_grid.positionViewAtBeginning()
+    }
+    Component.onCompleted: {
+        stateReady = true
+        LiveController.ensureLoaded()
+        Qt.callLater(restoreScroll)
+    }
+    Component.onDestruction: {
+        if (stateReady && !restorePending)
+            LiveController.scrollOffset = Math.max(0, room_grid.contentY - room_grid.originY)
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -64,6 +87,8 @@ FluPage {
             Layout.fillHeight: true
             GridView {
                 id: room_grid
+                objectName: "liveGrid"
+                onHeightChanged: Qt.callLater(page.restoreScroll)
                 anchors.fill: parent
                 clip: true
                 model: page.filteredItems

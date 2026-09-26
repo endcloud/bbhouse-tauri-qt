@@ -18,6 +18,7 @@
 #include "player/MpvClient.h"
 #include "player/MpvLib.h"
 #include "player/DanmakuEngine.h"
+#include <QJsonDocument>
 
 namespace {
 int failures = 0;
@@ -53,6 +54,13 @@ int main(int argc, char **argv) {
     auto *client = MpvClient::create();
     check(client != nullptr, "real mpv initializes");
     if (!client) return 1;
+    client->setPropertyString("http-header-fields", "Cookie: diagnostic-private-sentinel");
+    const QByteArray diagnostics = QJsonDocument::fromVariant(client->diagnosticSnapshot()).toJson();
+    check(!diagnostics.contains("diagnostic-private-sentinel") && !diagnostics.contains("http-header")
+              && !diagnostics.contains("path") && !diagnostics.contains("metadata")
+              && diagnostics.contains("hwdec-current"),
+          "memory diagnostics export only whitelisted runtime fields, never headers or media paths");
+    client->setPropertyString("http-header-fields", "");
     check(!QFile::exists(privateLog) && client->getPropertyString("options/log-file").isEmpty(),
           "inherited debug env cannot enable raw native media logs");
     qunsetenv("BBHOUSE_MPV_LOG");
@@ -313,6 +321,17 @@ int main(int argc, char **argv) {
           "renderer handle ownership survives QObject teardown");
     retained.reset();
     check(weak.expired(), "last owner releases mpv handle");
+
+    auto *transientClient = MpvClient::create();
+    check(transientClient != nullptr, "create transient client for queued completion lifetime");
+    if (transientClient) {
+        bool calledAfterDestruction = false;
+        transientClient->commandAsync({}, &app, [&](int) { calledAfterDestruction = true; });
+        delete transientClient;
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        check(!calledAfterDestruction,
+              "queued command completion is cancelled when client dies before its context");
+    }
 
     DanmakuEngine engine;
     engine.setPlayback(1, 1, true, true);

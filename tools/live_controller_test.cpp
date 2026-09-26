@@ -101,6 +101,18 @@ public:
         check(!bounded.busy() && !bounded.loaded() && bounded.pool().isEmpty() &&
               !bounded.error().isEmpty() && bounded.requests.size() == LiveController::kMaxPagesPerOperation,
               "unbounded empty pagination produces an explicit error rather than a false empty state");
+        controller.refresh();
+        const auto beforeRelease = controller.requests.last();
+        controller.setSearchText("fixture");
+        controller.setScrollOffset(240);
+        controller.releasePageCache();
+        check(controller.searchText().isEmpty() && controller.scrollOffset() == 0,
+              "page release drops remembered live search and scroll");
+        controller.ensureLoaded();
+        controller.finishFetch(beforeRelease.first, beforeRelease.second, {{room("expired")}, true}, {}, false);
+        check(controller.pool().isEmpty() && !controller.loaded() && controller.busy() &&
+              controller.requests.last().second == 1,
+              "released live page restarts at page one and rejects prior result without clearing busy");
         return failures ? 1 : 0;
     }
 };

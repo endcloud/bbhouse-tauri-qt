@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
     result = DanmakuFilter::mergeSimilar(dense);
     qInfo() << "20,000 duplicate entries, ms:" << timer.elapsed();
     check(result.size() == 1 && count(result[0]) == 20000, "dense exact duplicates keep one group and correct count");
+    check(result.capacity() <= 8, "merged cache releases original 20,000-entry reservation");
     dense.clear();
     for (int i = 0; i < 20000; ++i) dense.append(entry(0, QStringLiteral("unique entry number %1").arg(i)));
     timer.restart();

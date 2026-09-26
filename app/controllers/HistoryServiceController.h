@@ -2,6 +2,7 @@
 #define HISTORY_SERVICE_CONTROLLER_H
 
 #include <QObject>
+#include <QThreadPool>
 #include <QVariantList>
 #include "core/HistoryScheduler.h"
 
@@ -21,6 +22,7 @@ class HistoryServiceController : public QObject {
     Q_PROPERTY(QVariantList runs READ runs NOTIFY stateChanged)
 public:
     explicit HistoryServiceController(QObject *parent = nullptr);
+    ~HistoryServiceController() override;
     bool busy() const { return busy_; }
     bool registered() const { return status_.registered; }
     bool enabled() const { return status_.enabled; }
@@ -46,6 +48,7 @@ signals:
     void operationFinished(QString message);
     void operationFailed(QString message);
 private:
+    QThreadPool workerPool_;
     enum class Action { Open, Refresh, Register, Save, Enable, Unregister };
     void perform(Action action, const QString &time = {}, const QString &cycle = {},
                  int weekday = 1, bool enabled = true);

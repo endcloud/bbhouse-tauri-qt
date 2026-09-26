@@ -19,7 +19,7 @@ def main():
     stage = root / "build" / "ci-stage" / name
     # A stale directory is an error: do not merge unrelated files into an artifact.
     stage.mkdir(parents=True, exist_ok=False)
-    executable = "bbhouse-qt.exe" if platform == "windows-x64" else "bbhouse-qt"
+    executable = "BBHouse.exe" if platform == "windows-x64" else "bbhouse-qt"
     plugin = "fluentuiplugin.dll" if platform == "windows-x64" else "libfluentuiplugin.dylib"
     products = [executable, plugin]
     if platform == "windows-x64":
@@ -34,9 +34,9 @@ def main():
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     qt_version = os.environ["QT_VERSION"]
     (stage / "BUILD-INFO.md").write_text(
-        f"# bbhouse-qt 编译产物 / build-only artifact\n\n"
+        f"# BBHouse 编译产物 / build-only artifact\n\n"
         f"- 平台：{platform}\n- Qt SDK：{qt_version}\n- 提交：{commit}\n"
-        f"- 应用及内嵌组件对应源码（不含外部 Qt SDK）：https://github.com/endcloud/bbhouse-qt/archive/{commit}.tar.gz\n\n"
+        f"- 应用及内嵌组件对应源码（不含外部 Qt SDK）：https://github.com/endcloud/bbhouse-tauri-qt/archive/{commit}.tar.gz\n\n"
         "此包仅供检查编译结果，不是独立安装包。不含 Qt 运行库、libmpv、系统运行库，"
         "也未签名或公证。需要匹配的 Qt SDK 和 FluentUI QML 导入路径；"
         "开发机绝对路径及 RPATH 尚未重定位。不要作为最终 Release 安装包分发。\n\n"

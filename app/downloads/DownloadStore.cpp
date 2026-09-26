@@ -15,7 +15,13 @@ public:
         : name_(QUuid::createUuid().toString()), db_(QSqlDatabase::addDatabase("QSQLITE", name_)) {
         db_.setDatabaseName(path);
         db_.setConnectOptions("QSQLITE_BUSY_TIMEOUT=5000");
-        if (!db_.open()) throw std::runtime_error("Cannot open downloads database");
+        if (!db_.open()) {
+            // A throwing constructor never runs ~Connection; release the registered
+            // connection here as well as on the normal RAII path.
+            db_ = QSqlDatabase();
+            QSqlDatabase::removeDatabase(name_);
+            throw std::runtime_error("Cannot open downloads database");
+        }
     }
     ~Connection() {
         db_.close();
@@ -23,6 +29,8 @@ public:
         QSqlDatabase::removeDatabase(name_);
     }
     QSqlDatabase &db() { return db_; }
+    Connection(const Connection &) = delete;
+    Connection &operator=(const Connection &) = delete;
 private:
     QString name_;
     QSqlDatabase db_;

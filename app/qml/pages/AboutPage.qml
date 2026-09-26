@@ -6,6 +6,18 @@ import FluentUI
 FluPage {
     id: page
     padding: 0
+    property var navigationState: null
+    property bool stateReady: false
+    function restoreScroll() {
+        if (stateReady || scroll_view.height <= 0 || scroll_view.contentHeight <= 0) return
+        var saved = navigationState ? Number(navigationState.value.scrollOffset || 0) : 0
+        scroll_view.contentY = Math.max(0, Math.min(saved, scroll_view.contentHeight - scroll_view.height))
+        stateReady = true
+    }
+    Component.onCompleted: Qt.callLater(restoreScroll)
+    Component.onDestruction: {
+        if (navigationState && stateReady) navigationState.value = {scrollOffset: Math.max(0, scroll_view.contentY)}
+    }
     readonly property string repositoryUrl: "https://github.com/endcloud/bbhouse-tauri-qt"
     // 与 THIRD_PARTY_NOTICES.md 对应；依赖和设计参考均逐项保留来源。
     readonly property var projects: [
@@ -41,6 +53,10 @@ FluPage {
         FluText { text: qsTr("关于"); font: FluTextStyle.Title; anchors.verticalCenter: parent.verticalCenter }
     }
     Flickable {
+        id: scroll_view
+        objectName: "aboutScrollView"
+        onHeightChanged: Qt.callLater(page.restoreScroll)
+        onContentHeightChanged: Qt.callLater(page.restoreScroll)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
@@ -71,7 +87,7 @@ FluPage {
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            FluText { text: qsTr("B站历史记录"); font: FluTextStyle.Subtitle }
+                            FluText { text: qsTr("BBHouse"); font: FluTextStyle.Subtitle }
                             FluText { text: qsTr("Copyright © 2026 shizi"); textColor: FluTheme.fontSecondaryColor }
                         }
                         FluText { text: qsTr("版本 %1").arg(AppController.appVersion); textColor: FluTheme.fontSecondaryColor }
@@ -88,7 +104,7 @@ FluPage {
                             id: version_text
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
-                            text: qsTr("B站历史记录 版本 %1(Qt 6 · FluentUI · libmpv)").arg(AppController.appVersion)
+                            text: qsTr("BBHouse 版本 %1(Qt 6 · FluentUI · libmpv)").arg(AppController.appVersion)
                         }
                         FluIconButton {
                             iconSource: FluentIcons.Copy

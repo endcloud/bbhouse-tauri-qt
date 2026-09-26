@@ -30,6 +30,7 @@ static inline bool isCompositionEnabled() {
         if (dwm_is_composition_enabled) {
             dwm_is_composition_enabled(&composition_enabled);
         }
+        ::FreeLibrary(module);
         return composition_enabled;
     }
     return false;
@@ -45,13 +46,14 @@ static inline void setShadow(HWND hwnd) {
         if (dwm_extendframe_into_client_area_) {
             dwm_extendframe_into_client_area_(hwnd, &shadow);
         }
+        ::FreeLibrary(module);
     }
 }
 
 #endif
 
 bool containsCursorToItem(QQuickItem *item) {
-    if (!item || !item->isVisible()) {
+    if (!item || !item->isVisible() || !item->window()) {
         return false;
     }
     auto point = item->window()->mapFromGlobal(QCursor::pos());

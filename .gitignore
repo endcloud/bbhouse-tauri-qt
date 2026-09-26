@@ -58,3 +58,6 @@ openspec/specs/.mimosa/
 # Python packaging helpers
 __pycache__/
 *.py[cod]
+
+# Local code intelligence index
+.codegraph/

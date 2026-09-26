@@ -2,6 +2,7 @@
 #define SPECIAL_FOLLOW_CONTROLLER_H
 
 #include <atomic>
+#include <memory>
 
 #include <QHash>
 #include <QObject>
@@ -71,9 +72,14 @@ class SpecialFollowController : public QObject {
     Q_PROPERTY(int manageSearchPage READ manageSearchPage NOTIFY manageResultsChanged)
     Q_PROPERTY(qint64 manageSearchTotal READ manageSearchTotal NOTIFY manageResultsChanged)
     Q_PROPERTY(bool manageSearchMode READ manageSearchMode NOTIFY manageResultsChanged)
+    // 页面档位记忆(0=投稿 1=合集 2=专栏;渲染释放时保留,重建后回显)
+    Q_PROPERTY(int currentTab READ currentTab WRITE setCurrentTab NOTIFY currentTabChanged)
+    // 搜索词记忆(渲染释放时保留,重建后回显)
+    Q_PROPERTY(QString searchText READ searchText WRITE setSearchText NOTIFY searchTextChanged)
 
    public:
     explicit SpecialFollowController(QObject *parent = nullptr);
+    Q_INVOKABLE virtual void releasePageCache();
 
     bool localFollowBusy() const { return saveBusy_ || !saveQueue_.isEmpty(); }
     bool containsUp(qint64 mid) const;
@@ -117,6 +123,10 @@ class SpecialFollowController : public QObject {
     int manageSearchPage() const;
     qint64 manageSearchTotal() const;
     bool manageSearchMode() const;
+    int currentTab() const { return currentTab_; }
+    void setCurrentTab(int value);
+    QString searchText() const { return searchText_; }
+    void setSearchText(const QString &value);
 
     // 首次进入装载本地快照;文件不存在时以特别关注分组(tagid=-10)一次性种子
     // 导入。幂等:装载完成后重复调用零开销;失败以 seedFailed 提示,骨架可交互。
@@ -187,6 +197,8 @@ class SpecialFollowController : public QObject {
     void manageErrorChanged();
     void manageBrowseChanged();
     void manageResultsChanged();
+    void currentTabChanged();
+    void searchTextChanged();
     // 合并写回成功(弹层关闭由 QML 承担)
     void manageSaved();
     // 分档拉取失败(登录失效/网络等,message 本地化文案;旧卡片保留可刷新重试)
@@ -264,12 +276,14 @@ class SpecialFollowController : public QObject {
     qint64 pendingArticlesMid_ = 0;
     void applyMidFallback();
 
-    SpecialFollowStore store_;
+    std::shared_ptr<SpecialFollowStore> store_ = std::make_shared<SpecialFollowStore>();
     QVariantList ups_;  // 当前本地列表的 QVariantList 投影(仅主线程)
     bool upsReady_ = false;
     qint64 currentMid_ = 0;
     bool unauthorized_ = false;
 
+    quint64 pageGeneration_ = 0;
+    QList<qint64> sessionUse_;
     QHash<qint64, UpSession> sessions_;  // mid → 三档会话缓存(仅主线程)
 
     std::atomic_bool arcBusy_{false};
@@ -291,6 +305,8 @@ class SpecialFollowController : public QObject {
     QString manageError_;
     QSet<qint64> presentedMids_;                 // 本次弹层会话呈现过的成员
     QHash<qint64, SpecialFollowStore::Entry> checkedInfo_;  // 勾选池(勾选时捕获资料)
+    int currentTab_ = 0;        // 主线程,纯 UI 状态(渲染释放前记忆用)
+    QString searchText_;        // 主线程,纯 UI 状态(渲染释放前记忆用)
 };
 
 #endif  // SPECIAL_FOLLOW_CONTROLLER_H

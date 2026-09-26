@@ -96,6 +96,7 @@ public:
     Q_INVOKABLE QRect desktopAvailableGeometry(QQuickWindow *window);
 
     Q_INVOKABLE QString getWallpaperFilePath();
+    static QString wallpaperFilePath();
 
     Q_INVOKABLE QColor imageMainColor(const QImage &image, double bright = 1);
 };

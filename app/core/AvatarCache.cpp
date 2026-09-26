@@ -59,6 +59,14 @@ AvatarCache::Entry AvatarCache::readEntry(const QString &userId) const {
 
 QUrl AvatarCache::resolve(const QString &userId, const QUrl &remoteUrl) {
     if (userId.isEmpty() || userId == "0") return {};
+    // Keep only small metadata for recently viewed authors. Pixels stay on disk.
+    entryUse_.removeAll(userId);
+    entryUse_.append(userId);
+    while (entryUse_.size() > 512) {
+        const auto oldest = entryUse_.takeFirst();
+        entries_.remove(oldest);
+        if (!pending_.contains(oldest)) latestUrls_.remove(oldest);
+    }
     if (!entries_.contains(userId)) entries_.insert(userId, readEntry(userId));
     const Entry entry = entries_.value(userId);
     const qint64 now = clock_();
@@ -100,6 +108,13 @@ QUrl AvatarCache::resolve(const QString &userId, const QUrl &remoteUrl) {
             resolve(userId, latestUrls_.value(userId));
             return;
         }
+        entryUse_.removeAll(userId);
+        entryUse_.append(userId);
+        while (entryUse_.size() > 512) {
+            const auto oldest = entryUse_.takeFirst();
+            entries_.remove(oldest);
+            if (!pending_.contains(oldest)) latestUrls_.remove(oldest);
+        }
         auto &entry = entries_[userId];
         entry.retryAfter = clock_() + RetryDelayMs;
         if (!validResponse) return;
@@ -120,4 +135,13 @@ QUrl AvatarCache::resolve(const QString &userId, const QUrl &remoteUrl) {
         emit avatarReady(userId, entry.source);
     });
     return entry.source;
+}
+
+void AvatarCache::releaseMemoryCache() {
+    entries_ = {};
+    entryUse_ = {};
+    for (auto it = latestUrls_.begin(); it != latestUrls_.end();) {
+        if (!pending_.contains(it.key())) it = latestUrls_.erase(it);
+        else ++it;
+    }
 }

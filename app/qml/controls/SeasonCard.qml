@@ -81,12 +81,16 @@ Item {
 
             FluImage {
                 id: cover_image
+                objectName: "seasonCoverImage"
 
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 cache: true
                 source: card_root.thumbnailUrl
+                // 与 FluImage 默认策略一致：解码 DPR 上限 2，避免高 DPI 放大纹理预算。
+                sourceSize: Qt.size(width * Math.min(Screen.devicePixelRatio, 2),
+                                   height * Math.min(Screen.devicePixelRatio, 2))
             }
 
             // 评分角标(封面右下角;条目无评分省略)

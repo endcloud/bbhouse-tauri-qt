@@ -15,6 +15,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSqlDatabase>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -60,6 +61,15 @@ int main(int argc, char **argv) {
     int failures = 0;
     auto check = [&](bool ok, const char *name) { qInfo() << (ok ? "PASS" : "FAIL") << name; failures += !ok; };
     failures += runDownloadManagementTests();
+    const auto connectionsBefore = QSqlDatabase::connectionNames();
+    int failedOpenCount = 0;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        // A directory is never a valid SQLite file on any supported platform.
+        try { DownloadStore(temp.path()).load(); }
+        catch (const std::exception &) { ++failedOpenCount; }
+    }
+    check(failedOpenCount == 32 && QSqlDatabase::connectionNames() == connectionsBefore,
+          "failed database opens do not retain registered SQL connections");
     const QByteArray subtitle = R"({"body":[{"from":0.125,"to":1.5,"content":"你好\n第二行"},{"from":-1,"to":2,"content":"invalid"},{"from":3599.9996,"to":3601,"content":"boundary"}]})";
     const auto srt = DownloadUtils::subtitleToSrt(subtitle);
     check(srt.contains("00:00:00,125 --> 00:00:01,500\n你好\n第二行")

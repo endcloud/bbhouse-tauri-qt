@@ -7,7 +7,11 @@
 #include "core/HistoryStore.h"
 #include "core/ApiErrors.h"
 
-HistoryServiceController::HistoryServiceController(QObject *parent) : QObject(parent) {}
+HistoryServiceController::~HistoryServiceController() {
+    workerPool_.waitForDone();
+}
+
+HistoryServiceController::HistoryServiceController(QObject *parent) : QObject(parent) { workerPool_.setMaxThreadCount(1); }
 
 HistoryServiceConfig HistoryServiceController::currentPaths() {
     HistoryServiceConfig config;
@@ -35,7 +39,7 @@ void HistoryServiceController::perform(Action action, const QString &time, const
     emit stateChanged();
     const QString path = QFileInfo(AppPaths::dataDir() + "/history-service.json").absoluteFilePath();
     const auto paths = currentPaths();
-    QThreadPool::globalInstance()->start([this, action, time, cycle, weekday, enabled, path, paths] {
+    workerPool_.start([this, action, time, cycle, weekday, enabled, path, paths] {
         HistoryScheduler scheduler(path);
         HistoryServiceStatus status;
         HistoryServiceConfig config = paths;

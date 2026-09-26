@@ -16,8 +16,9 @@ FluPage {
     // 页面自行管理 24px 外边距，抵消 FluPage 默认的额外 5px padding。
     padding: 0
 
-    // 标题栏搜索投影(由 MainWindow 向当前页提交):当前档当前页标题不分大小写子串,空词恢复全量
-    property string searchQuery: ""
+    // 标题栏搜索投影(由 MainWindow 向当前页提交):当前档当前页标题不分大小写子串,空词恢复全量。
+    // 初始值读自控制器保留的港澳台搜索词(渲染重建后回显,而非清零覆盖)。
+    property string searchQuery: BangumiController.regionalSearch
     readonly property string queryLower: searchQuery.trim().toLowerCase()
     readonly property bool searching: queryLower !== ""
 
@@ -31,7 +32,8 @@ FluPage {
         { key: "documentary", label: qsTr("纪录片"), types: [3], bucket: 2 },
         { key: "regional", label: qsTr("港澳台"), types: [], bucket: 3 }
     ]
-    property string currentTab: "anime"
+    // 初始值读自控制器保留的档位(渲染重建后回显,而非硬编码 anime)
+    property string currentTab: BangumiController.currentTab
     readonly property var activeTab: tabByKey(currentTab)
 
     readonly property int pageSize: 30
@@ -86,6 +88,7 @@ FluPage {
     function selectTab(key) {
         if (currentTab === key) return
         currentTab = key
+        BangumiController.currentTab = key
         // 同桶切档纯重投影零网络;换桶未装载由 Controller 拉该桶第 1 页
         BangumiController.setBucket(activeTab.bucket)
         scroll_view.contentY = 0  // 切档回顶(规约)
@@ -412,6 +415,8 @@ FluPage {
         }
         FluPagination {
             id: pagination_bar
+            objectName: "bangumiPagination"
+            pageCurrent: Math.max(1, BangumiController.currentPage)
 
             width: Math.min(implicitWidth, parent.width)
             anchors.horizontalCenter: parent.horizontalCenter
@@ -672,8 +677,8 @@ FluPage {
 
     Component.onCompleted: {
         // 页面首次创建时装载当前桶(默认桶 1 第 1 页);切页返回(页面缓存 +
-        // Controller 单例页码记忆)不重新拉取
-        BangumiController.setRegionalSearch(page.searchQuery)
+        // Controller 单例页码记忆)不重新拉取。页面创建时从控制器读取档位与
+        // 港澳台搜索词回显,而非覆盖写入(currentTab/searchQuery 属性已绑定)。
         BangumiController.ensureCurrentBucketLoaded()
     }
 }

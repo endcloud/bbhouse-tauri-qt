@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include <QHash>
+#include <QVariantMap>
 #include <mpv/client.h>
 
 typedef struct mpv_handle mpv_handle;
@@ -35,6 +36,8 @@ class MpvClient : public QObject {
     QString getPropertyString(const QString &name) const;
     double getPropertyDouble(const QString &name) const;
     bool getFlag(const QString &name) const;
+    // Explicit allowlist only: never exports paths, headers, track titles or metadata.
+    QVariantMap diagnosticSnapshot() const;
     void setPropertyString(const QString &name, const QString &value);
     void observeProperty(const QString &name, mpv_format format);
 

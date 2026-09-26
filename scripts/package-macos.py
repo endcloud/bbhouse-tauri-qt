@@ -355,19 +355,20 @@ def main():
         raise RuntimeError('Only Release build products may be packaged')
     version = re.search(r'project\(bbhouse-qt VERSION ([\d.]+)', (ROOT / 'CMakeLists.txt').read_text()).group(1)
     stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    release = ROOT / 'build/release' / f'bbhouse-qt-macos-arm64_{stamp}'
-    old_releases = [path for path in release.parent.glob('bbhouse-qt-macos-arm64_*')
-                    if re.fullmatch(r'bbhouse-qt-macos-arm64_\d{8}_\d{6}', path.name)
+    release = ROOT / 'build/release' / f'BBHouse-macos-arm64_{stamp}'
+    old_releases = [path for prefix in ('bbhouse-qt', 'BBHouse')
+                    for path in release.parent.glob(f'{prefix}-macos-arm64_*')
+                    if re.fullmatch(r'(?:bbhouse-qt|BBHouse)-macos-arm64_\d{8}_\d{6}', path.name)
                     and path.is_dir() and not path.is_symlink()]
     release.mkdir(parents=True, exist_ok=False)
-    app = release / 'bbhouse-qt.app'
+    app = release / 'BBHouse.app'
     contents = app / 'Contents'
     for name in ['MacOS', 'Frameworks', 'Resources']:
         (contents / name).mkdir(parents=True)
     shutil.copy2(build / 'bin/bbhouse-qt', contents / 'MacOS/bbhouse-qt')
     shutil.copy2(APP_ICON, contents / 'Resources' / APP_ICON.name)
-    plist = {'CFBundleExecutable': 'bbhouse-qt', 'CFBundleName': 'bbhouse-qt',
-             'CFBundleDisplayName': 'bbhouse-qt', 'CFBundleIdentifier': 'io.github.endcloud.bbhouse-qt',
+    plist = {'CFBundleExecutable': 'bbhouse-qt', 'CFBundleName': 'BBHouse',
+             'CFBundleDisplayName': 'BBHouse', 'CFBundleIdentifier': 'io.github.endcloud.bbhouse-qt',
              'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': version,
              'CFBundleVersion': version, 'CFBundleIconFile': APP_ICON.name,
              'NSHighResolutionCapable': True,
@@ -396,8 +397,8 @@ def main():
     (contents / 'Resources/bundle-dependencies.json').write_text(json.dumps(inventory, indent=2) + '\n')
     commit = run('git', '-C', ROOT, 'rev-parse', 'HEAD').strip()
     dirty = bool(run('git', '-C', ROOT, 'status', '--porcelain').strip())
-    description = (f'# bbhouse-qt {version} — macOS arm64\n\n'
-                   f'将 bbhouse-qt.app 拖入 Applications。要求 macOS {minimum} 或更新版本（Apple Silicon）。\n\n'
+    description = (f'# BBHouse {version} — macOS arm64\n\n'
+                   f'将 BBHouse.app 拖入 Applications。要求 macOS {minimum} 或更新版本（Apple Silicon）。\n\n'
                    '本包包含 Qt、FluentUI、libmpv、aria2c、FFmpeg、curl 和动态依赖，无需 Homebrew 或 Qt SDK。'
                    '采用本地 ad-hoc 签名，未使用 Developer ID，未通过 Apple 公证。\n\n'
                    '本地验收包：现有微软图标字体再分发授权与默认头像授权仍待解决；'
@@ -426,11 +427,11 @@ def main():
         (release / 'deployment-smoke.log').write_text(smoke(app, scratch, qt))
         (release / 'download-smoke.log').write_text(download_smoke(app, scratch, qt))
         print('Creating drag-install DMG…', flush=True)
-        dmg = release / f'bbhouse-qt-{version}-macos-arm64.dmg'
+        dmg = release / f'BBHouse-{version}-macos-arm64.dmg'
         dmg_env = {**os.environ, 'TMPDIR': str(scratch)}
         run(args.dmgbuild, '-s', ROOT / 'scripts/macos/dmg-settings.py',
             '-D', f'app={app}', '-D', f'readme={release / "使用说明.md"}',
-            'bbhouse-qt', dmg, env=dmg_env)
+            'BBHouse', dmg, env=dmg_env)
         run('hdiutil', 'verify', dmg)
         mount = scratch / 'mounted'
         mount.mkdir()

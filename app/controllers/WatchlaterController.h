@@ -26,13 +26,22 @@ class WatchlaterController : public QObject {
     Q_PROPERTY(bool loaded READ loaded NOTIFY loadedChanged)
     // 全量池(响应原序 = add_at 降序;QML 按当前搜索词做纯内存投影)
     Q_PROPERTY(QVariantList pool READ pool NOTIFY poolChanged)
+    // 搜索词记忆(渲染释放时保留,重建后回显)
+    Q_PROPERTY(QString searchText READ searchText WRITE setSearchText NOTIFY searchTextChanged)
+    // 页码记忆(渲染释放时保留,重建后回显)
+    Q_PROPERTY(int pageIndex READ pageIndex WRITE setPageIndex NOTIFY pageIndexChanged)
    public:
     explicit WatchlaterController(QObject *parent = nullptr);
+    Q_INVOKABLE void releasePageCache();
 
     bool busy() const;
     bool unauthorized() const;
     bool loaded() const;
     QVariantList pool() const;
+    QString searchText() const { return searchText_; }
+    void setSearchText(const QString &value);
+    int pageIndex() const { return pageIndex_; }
+    void setPageIndex(int value);
 
     // 重新发起一次全量请求(busy 期间重复触发在此兜底);既有池保留至替换
     Q_INVOKABLE void refresh();
@@ -42,15 +51,20 @@ class WatchlaterController : public QObject {
     void unauthorizedChanged();
     void loadedChanged();
     void poolChanged();
+    void searchTextChanged();
+    void pageIndexChanged();
     // 登录失效/网络失败等(message 为本地化文案,QML 经 InfoBar 呈现;旧卡片保留)
     void loadFailed(QString message);
 
    private:
     static QVariantMap toItemMap(const HistoryItem &item);
 
+    quint64 generation_ = 0;
     QVariantList pool_;          // 全量池(主线程;刷新期间不动,成功后整体替换)
     bool unauthorized_ = false;  // 主线程
     bool loaded_ = false;        // 主线程
+    QString searchText_;         // 主线程,纯 UI 状态(渲染释放前记忆用)
+    int pageIndex_ = 1;          // 主线程,纯 UI 状态(渲染释放前记忆用)
     std::atomic_bool busy_{false};
 };
 

@@ -10,7 +10,7 @@ import bbhouse
 // "第 x / y 页 · 显示 a-b 共 n 条")+ 回到顶部 FAB + 封面预览层。
 // 搜索:页面独立 searchQuery 投影,仅对当前分页已加载
 // 条目的标题/UP 主做不分大小写子串筛选;空词恢复全量。
-// 页面实例由 MainWindow 常驻缓存,切走再回来页码/列表/搜索词不重置。
+// 页面在后台保留阈值内缓存；超时重建后重新加载，后台同步不受影响。
 FluPage {
     id: page
     // 页面自行管理 24px 外边距，抵消 FluPage 默认的额外 5px padding。
@@ -23,13 +23,15 @@ FluPage {
     readonly property int pageSize: 30
     // 当前分页已加载条目(pageLoaded 快照;翻页/同步完成时刷新)
     property var pageItems: []
-    // 标题栏搜索投影(由 MainWindow 注入;筛选仅作用于 filteredItems 绑定)
-    property string searchQuery: ""
+    // 标题栏搜索投影(由 MainWindow 注入;筛选仅作用于 filteredItems 绑定)。
+    // 初始值读自控制器保留的搜索词(渲染重建后回显,而非清零覆盖)。
+    property string searchQuery: HistoryController.searchText
     // 分页口径的总条数(未筛选;搜索不改变分页)
     property int totalItemCount: 0
 
     // 仅当前分页:标题或 UP 主不分大小写子串匹配,任一命中即显示
     readonly property string queryLower: searchQuery.trim().toLowerCase()
+    onSearchQueryChanged: HistoryController.searchText = searchQuery
     readonly property var filteredItems: {
         var q = queryLower
         var source = pageItems
@@ -45,6 +47,28 @@ FluPage {
         }
         return result
     }
+
+    // 稳定增量模型:按 videoKey 逐项 diff,翻页/搜索投影更新时不打乱已渲染
+    // 卡片实例与滚动位置(与 OnlineHistoryPage/PopularPage 现有实现同构)。
+    ListModel { id: cards_model; dynamicRoles: true }
+    function syncCards() {
+        var entries = page.filteredItems
+        var scrollY = grid.contentY
+        for (var i = 0; i < entries.length; ++i) {
+            var entry = entries[i]
+            if (i < cards_model.count && cards_model.get(i).cardData.videoKey !== entry.videoKey)
+                cards_model.remove(i, cards_model.count - i)
+            if (i >= cards_model.count) cards_model.append({cardData: entry})
+            else if (JSON.stringify(cards_model.get(i).cardData) !== JSON.stringify(entry))
+                cards_model.setProperty(i, "cardData", entry)
+        }
+        if (cards_model.count > entries.length)
+            cards_model.remove(entries.length, cards_model.count - entries.length)
+        // 翻页/刷新时回顶(与原分页栏行为一致);同页内搜索投影变化保留滚动位置。
+        grid.contentY = Math.max(grid.originY, Math.min(scrollY,
+            grid.originY + Math.max(0, grid.contentHeight - grid.height)))
+    }
+    onFilteredItemsChanged: Qt.callLater(syncCards)
 
     FluInfoBar {
         id: info_bar
@@ -147,14 +171,10 @@ FluPage {
         }
     }
 
-    // ---- 内容区:瀑布流滚动容器 ----
-    Flickable {
-        id: scroll_view
+    // ---- 内容区:虚拟化瀑布流网格 ----
+    Item {
+        id: content_area
 
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        contentWidth: width
-        contentHeight: masonry.y + masonry.height + 12
         anchors {
             top: counts_text.bottom
             topMargin: 8
@@ -166,78 +186,67 @@ FluPage {
             rightMargin: 24
         }
 
-        // 瀑布流:列宽固定 300,步距 316;列数 = floor(可用宽/316) ≥ 1;
-        // 卡片逐张放入当前最短列;整体水平居中(容器宽随列数收缩,不横向滚动)。
-        // FluStaggeredLayout 不适用:其定位基于 itemWidth+rowSpacing 无居中、
-        // 移除/刷新时 itemsInRep 易错位,故按契约自绘最短列布局。
-        Item {
-            id: masonry
+        readonly property int gridColumns: Math.max(1, Math.floor(width / 316))
+        readonly property real gridCardWidth: Math.min(300, width - 16)
 
-            readonly property int columnWidth: 300
-            readonly property int columnGap: 16
-            readonly property int rowGap: 16
-            readonly property int stride: columnWidth + columnGap
-            readonly property int columnCount: Math.max(1, Math.floor((width + columnGap) / stride))
-            readonly property int gridWidth: Math.max(0, columnCount * stride - columnGap)
-            property real contentHeight: 0
+        GridView {
+            id: grid
 
-            width: parent.width
-            height: Math.max(contentHeight, 1)
-            x: Math.max(0, Math.floor((width - gridWidth) / 2))
-
-            function relayout() {
-                var count = cards_repeater.count
-                if (count === 0) {
-                    masonry.contentHeight = 0
-                    return
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: content_area.gridColumns * cellWidth
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            cellWidth: content_area.gridCardWidth + 16
+            // 同一页面生命周期内只增高(与 OnlineHistoryPage/PopularPage 同构)。
+            property real measuredCardHeight: 0
+            cellHeight: (measuredCardHeight || Math.ceil(content_area.gridCardWidth * 9 / 16) + 140) + 16
+            function measureCards() {
+                var tallest = measuredCardHeight
+                var delegates = contentItem.children
+                for (var i = 0; i < delegates.length; ++i) {
+                    if (delegates[i].cardHeight !== undefined)
+                        tallest = Math.max(tallest, delegates[i].cardHeight)
                 }
-                var heights = []
-                for (var i = 0; i < count; i++) {
-                    var card = cards_repeater.itemAt(i)
-                    if (!card) continue
-                    var col, top
-                    if (i < masonry.columnCount) {
-                        col = i
-                        top = 0
-                        heights.push(card.height)
-                    } else {
-                        var minHeight = Math.min.apply(null, heights)
-                        col = heights.indexOf(minHeight)
-                        top = minHeight + masonry.rowGap
-                        heights[col] = top + card.height
-                    }
-                    card.x = col * masonry.stride
-                    card.y = top
-                }
-                masonry.contentHeight = Math.max.apply(null, heights)
+                measuredCardHeight = tallest
             }
+            model: cards_model
+            cacheBuffer: cellHeight
 
-            onColumnCountChanged: relayout()
-            onWidthChanged: relayout()
+            delegate: Item {
+                id: cell
+                required property var cardData
+                readonly property real cardHeight: card.implicitHeight
+                onCardHeightChanged: Qt.callLater(grid.measureCards)
+                Component.onCompleted: Qt.callLater(grid.measureCards)
+                width: grid.cellWidth
+                height: grid.cellHeight
 
-            Repeater {
-                id: cards_repeater
+                HistoryCard {
+                    id: card
 
-                onCountChanged: Qt.callLater(masonry.relayout)
-
-                model: page.filteredItems
-
-                delegate: HistoryCard {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: content_area.gridCardWidth
+                    height: implicitHeight
+                    cardItem: cell.cardData
+                    showRecordedBadge: true
                     onAuthorClicked: function (author) {
                         AppController.openUserSpace(author.mid, author.name, author.faceUrl)
                     }
-                    id: card
-
-                    cardItem: modelData
-                    showRecordedBadge: true
-                    width: masonry.columnWidth
-                    height: implicitHeight
-                    onImplicitHeightChanged: Qt.callLater(masonry.relayout)
-                    Component.onCompleted: Qt.callLater(masonry.relayout)
                     onCoverClicked: function (sourceItem) {
                         // 点击封面 → 仅预览原图,不触发跳转(互斥契约)
                         cover_preview.show(card.baseUrl, sourceItem)
                     }
+                }
+            }
+
+            ScrollBar.vertical: FluScrollBar {
+                parent: grid.parent
+                anchors {
+                    top: parent.top
+                    right: parent.right
+                    bottom: parent.bottom
                 }
             }
         }
@@ -254,8 +263,6 @@ FluPage {
                 page.pageItems.length === 0 ? qsTr("暂无观看记录,点击「同步」获取") : qsTr("当前页无匹配条目")
             textColor: FluTheme.fontSecondaryColor
         }
-
-        ScrollBar.vertical: FluScrollBar {}
     }
 
     // ---- 分页栏:首页/上一页/数字/下一页/末页 + 口径文案 ----
@@ -316,7 +323,7 @@ FluPage {
                 }
             }
             onRequestPage: function (requestedPage, count) {
-                scroll_view.contentY = 0
+                grid.contentY = 0
                 HistoryController.loadPage(requestedPage)
             }
         }
@@ -332,7 +339,7 @@ FluPage {
         radius: 20
         iconSource: FluentIcons.ChevronUp
         iconSize: 14
-        opacity: scroll_view.contentY > scroll_view.height + 4 ? 1 : 0
+        opacity: grid.contentY > grid.height + 4 ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation {
@@ -353,7 +360,7 @@ FluPage {
     NumberAnimation {
         id: scroll_anim
 
-        target: scroll_view
+        target: grid
         property: "contentY"
         to: 0
         duration: 240
@@ -408,6 +415,8 @@ FluPage {
     }
     Component.onCompleted: {
         initialized = true
-        HistoryController.loadPage(1)
+        // 渲染重建时请求上次记忆的页码(而非硬编码首页),避免切走再切回时
+        // 误跳回第一页;真正的首次启动该值即为 1。
+        HistoryController.loadPage(HistoryController.lastRequestedPage)
     }
 }

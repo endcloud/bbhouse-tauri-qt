@@ -23,10 +23,11 @@
 #include "player/MpvVideoItem.h"
 #include "player/SystemMediaControls.h"
 #include "player/SubtitleTimeline.h"
+#include "player/OnlineDanmakuLoader.h"
 
 // QML 桥接:播放窗口管线编排(契约见 openspec/specs/video-playback-window)。
 // 线程约定同 HistoryController:数据层(PlayerApi/HistoryStore/HeartbeatApi)全部
-// 阻塞式,一律经 QThreadPool 全局线程池执行,结果以 QueuedConnection 回投主线程
+// 阻塞式,经自有 QThreadPool 执行,结果以 QueuedConnection 回投主线程
 // 再发信号;mpv 内核调用(loadDash/属性/命令)仅限主线程(事件在其创建线程排空)。
 //
 // videoItem/danmakuItem 由 C++ 创建(QML 不能 new C++ 类型),窗口 QML 仅挂载
@@ -184,6 +185,11 @@ class PlayerController : public QObject {
     void screenshotFailed(QString message);
 
    private:
+    // Tasks accessing this/store_ must finish before the destructor releases
+    // members; relying on the application's global-pool shutdown is insufficient
+    // when a controller is destroyed independently.
+    QThreadPool workerPool_;
+    OnlineDanmakuLoader onlineDanmaku_;
     QThreadPool screenshotPool_; // Serial image encoding, independent of API work.
     QThreadPool localMediaPool_; // Local sidecar I/O and XML parsing; joined on destruction.
     QThreadPool subtitlePool_; // Subtitle HTTP/JSON work never blocks playback.

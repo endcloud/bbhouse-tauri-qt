@@ -7,7 +7,7 @@
 #include <QColor>
 #include <QTimer>
 #include <QFileSystemWatcher>
-#include <QMutex>
+#include <QThreadPool>
 #include "FluAccentColor.h"
 #include "stdafx.h"
 #include "singleton.h"
@@ -55,6 +55,7 @@ protected:
 
 public:
     SINGLETON(FluTheme)
+    ~FluTheme() override;
 
     Q_SIGNAL void darkChanged();
 
@@ -67,5 +68,6 @@ public:
 private:
     bool _systemDark;
     QFileSystemWatcher _watcher;
-    QMutex _mutex;
+    bool _wallpaperPending = false;
+    QThreadPool _wallpaperPool;
 };

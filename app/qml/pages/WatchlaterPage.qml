@@ -16,10 +16,14 @@ FluPage {
     // 页面自行管理 24px 外边距，抵消 FluPage 默认的额外 5px padding。
     padding: 0
 
-    // 标题栏搜索投影(由 MainWindow 向当前页提交):标题或 UP 主不分大小写子串,空词恢复全量
-    property string searchQuery: ""
+    // 标题栏搜索投影(由 MainWindow 向当前页提交):标题或 UP 主不分大小写子串,空词恢复全量。
+    // 初始值读自控制器保留的搜索词(渲染重建后回显,而非清零覆盖)。
+    property string searchQuery: WatchlaterController.searchText
+    property bool stateReady: false
     readonly property string queryLower: searchQuery.trim().toLowerCase()
     readonly property bool searching: queryLower !== ""
+
+    onSearchQueryChanged: if (stateReady) WatchlaterController.searchText = searchQuery
 
     // 全量池(绑定 Controller 单例;失效占位等展示态修饰在此完成)
     readonly property var rawPool: WatchlaterController.pool
@@ -40,22 +44,24 @@ FluPage {
         return result
     }
     readonly property int pageSize: 30
-    property int pageIndex: 1
+    // 初始值读自控制器保留的页码(渲染重建后回显,而非硬编码 1)
+    property int pageIndex: WatchlaterController.pageIndex
     readonly property int totalPages: Math.max(1, Math.ceil(filteredItems.length / pageSize))
     readonly property var pageItems: filteredItems.slice((pageIndex - 1) * pageSize,
                                                         pageIndex * pageSize)
 
     function selectPage(requestedPage) {
         pageIndex = Math.max(1, Math.min(requestedPage, totalPages))
+        WatchlaterController.pageIndex = pageIndex
         pagination_bar.pageCurrent = pageIndex
         scroll_anim.stop()
         scroll_view.contentY = 0
     }
 
     // 搜索覆盖全量池并回首页;刷新后仅在原页码越界时回到新的末页。
-    onQueryLowerChanged: selectPage(1)
+    onQueryLowerChanged: if (stateReady) selectPage(1)
     onTotalPagesChanged: {
-        if (pageIndex > totalPages) selectPage(totalPages)
+        if (stateReady && pageIndex > totalPages) selectPage(totalPages)
     }
 
     // 最近一次失败文案(空串 = 无);刷新失败保留旧卡片,状态条与 InfoBar 提示
@@ -313,7 +319,8 @@ FluPage {
             width: Math.min(implicitWidth, parent.width)
             anchors.horizontalCenter: parent.horizontalCenter
             pageButtonCount: page.width < 720 ? 3 : 5
-            pageCurrent: 1
+            objectName: "watchlaterPagination"
+            pageCurrent: page.pageIndex
             itemCount: page.filteredItems.length
             __itemPerPage: page.pageSize
             header: Component {
@@ -401,6 +408,8 @@ FluPage {
     }
 
     Component.onCompleted: {
+        stateReady = true
+        selectPage(pageIndex)
         // 页面首次创建时装载全量;切页返回(页面缓存)不重新拉取
         if (!WatchlaterController.loaded && !WatchlaterController.busy) {
             WatchlaterController.refresh()

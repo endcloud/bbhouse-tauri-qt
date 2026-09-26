@@ -9,15 +9,19 @@ import bbhouse
 // 工具栏仅一个图标刷新按钮(右缘经宽度同步与瀑布流内容区右缘对齐),点击重置
 // 游标与池重拉首页;回顶 FAB/封面预览/主体起播沿用本地历史页行为。
 // 搜索:页面独立 searchQuery 提交(对已加载池投影,零网络);刷新与续载后
-// 按当前词重新投影(注入属性绑定天然实现切页重放)。页面由 MainWindow 常驻
-// 缓存,池在 OnlineHistoryController 单例中,切页再返回列表与筛选均保持。
+// 按当前词重新投影(注入属性绑定天然实现切页重放)。
+// 渲染:虚拟化网格(history-browser-ui 规格,与本地历史/动态页同构),仅视口与
+// 缓冲区内的卡片为活动渲染项。页面可能随导航切走被销毁并在返回时重建
+// (app-navigation-shell 的"非活动页面渲染释放"):池/游标/搜索词/滚动位置均
+// 保存在 OnlineHistoryController 单例,不因渲染重建而丢失或重新拉取首页。
 FluPage {
     id: page
     // 页面自行管理 24px 外边距，抵消 FluPage 默认的额外 5px padding。
     padding: 0
 
-    // 标题栏搜索投影(由 MainWindow 向当前页提交):标题或 UP 主不分大小写子串,空词恢复全量
-    property string searchQuery: ""
+    // 标题栏搜索投影(由 MainWindow 向当前页提交):初始值读自控制器保留的搜索词
+    // (渲染重建后回显,而非清零覆盖);之后每次赋值即断开该绑定,变为普通可写属性。
+    property string searchQuery: OnlineHistoryController.searchText
     readonly property string queryLower: searchQuery.trim().toLowerCase()
     readonly property bool searching: queryLower !== ""
 
@@ -45,19 +49,70 @@ FluPage {
     // 最近一次失败文案(空串 = 无);空态区按其呈现可重试提示
     property string lastError: ""
 
-    // ---- 瀑布流列参数(与 LocalHistoryPage 同款):列宽 300、步距 316、整体居中 ----
-    readonly property int columnStride: 316
-    readonly property int columnGap: 16
-    readonly property int viewportWidth: width - 48
-    readonly property int columnCount: Math.max(1, Math.floor((viewportWidth + columnGap) / columnStride))
-    readonly property int gridWidth: Math.max(0, columnCount * columnStride - columnGap)
-    // 瀑布流内容区右缘到页面右缘的距离(刷新按钮对齐用的宽度同步口径;取整方向与
-    // masonry.x 的 floor 相对,故右缘用 ceil)
+    // 瀑布流内容区右缘到页面右缘的距离(刷新按钮对齐用),按虚拟化网格的实际列数
+    // 与卡片宽度换算(与 grid 的列/宽度公式保持一致口径)
+    readonly property int contentAreaWidth: Math.max(0, width - 48)
+    readonly property int gridColumns: Math.max(1, Math.floor(contentAreaWidth / 316))
+    readonly property real gridCardWidth: Math.min(300, contentAreaWidth - 16)
+    readonly property real gridTotalWidth: gridColumns * (gridCardWidth + 16)
     readonly property int gridRightInset:
-        24 + Math.ceil(Math.max(0, viewportWidth - gridWidth) / 2)
-    // 列数变化(窗口宽度变化)时重排瀑布流(columnCount 定义在页级,masonry 内
-    // 无同名属性,故重排触发挂在这里)
-    onColumnCountChanged: masonry.relayout()
+        24 + Math.ceil(Math.max(0, contentAreaWidth - gridTotalWidth) / 2)
+
+    // 稳定增量模型:按 videoKey 逐项 diff,续载/去重/搜索投影更新时不打乱
+    // 已渲染卡片实例与滚动位置(与 PopularPage 现有实现同构)。
+    ListModel { id: cards_model; dynamicRoles: true }
+    property bool stateReady: false
+    property bool scrollRestored: false
+    property bool restoringScroll: false
+    property var liveAnchor: ({})
+    property var pendingAnchor: ({})
+    function captureAnchor() {
+        if (!cards_model.count || grid.cellHeight <= 0) return ({})
+        var row = Math.max(0, Math.floor((grid.contentY - grid.originY) / grid.cellHeight))
+        var index = Math.min(cards_model.count - 1, row * gridColumns)
+        return {key: String(cards_model.get(index).cardData.videoKey), index: index,
+                fraction: (grid.contentY - grid.originY) / grid.cellHeight - row}
+    }
+    function queueRestore(anchor) {
+        if (!restoringScroll) pendingAnchor = anchor || ({})
+        restoringScroll = true
+        Qt.callLater(restoreScroll)
+    }
+    function restoreScroll() {
+        if (!stateReady || grid.height <= 0 || grid.width <= 0) return
+        grid.forceLayout()
+        grid.measureCards()
+        grid.forceLayout()
+        var anchor = pendingAnchor
+        var index = -1
+        if (anchor.key) for (var i = 0; i < cards_model.count; ++i) {
+            if (String(cards_model.get(i).cardData.videoKey) === anchor.key) { index = i; break }
+        }
+        var y = scrollRestored ? grid.contentY : OnlineHistoryController.scrollOffset
+        if (index < 0 && anchor.key && cards_model.count) index = 0
+        if (index >= 0) y = grid.originY + (Math.floor(index / gridColumns) + Number(anchor.fraction || 0)) * grid.cellHeight
+        grid.contentY = Math.max(grid.originY, Math.min(y,
+            grid.originY + Math.max(0, grid.contentHeight - grid.height)))
+        scrollRestored = true
+        restoringScroll = false
+        liveAnchor = captureAnchor()
+        evaluateAutoChain()
+    }
+    function syncCards() {
+        var entries = page.filteredItems
+        queueRestore(scrollRestored ? captureAnchor() : OnlineHistoryController.scrollAnchor)
+        for (var i = 0; i < entries.length; ++i) {
+            var entry = entries[i]
+            if (i < cards_model.count && cards_model.get(i).cardData.videoKey !== entry.videoKey)
+                cards_model.remove(i, cards_model.count - i)
+            if (i >= cards_model.count) cards_model.append({cardData: entry})
+            else if (JSON.stringify(cards_model.get(i).cardData) !== JSON.stringify(entry))
+                cards_model.setProperty(i, "cardData", entry)
+        }
+        if (cards_model.count > entries.length) cards_model.remove(entries.length, cards_model.count - entries.length)
+    }
+    onFilteredItemsChanged: if (stateReady) Qt.callLater(syncCards)
+    onGridColumnsChanged: if (stateReady) queueRestore(liveAnchor)
 
     FluInfoBar {
         id: info_bar
@@ -105,19 +160,15 @@ FluPage {
         onClicked: {
             page.autoRounds = 0
             page.lastError = ""
-            scroll_view.contentY = 0  // 刷新后滚动位置回顶
+            grid.contentY = 0  // 刷新后滚动位置回顶
             OnlineHistoryController.refresh()
         }
     }
 
-    // ---- 内容区:瀑布流滚动容器(无分页栏) ----
-    Flickable {
-        id: scroll_view
+    // ---- 内容区:虚拟化瀑布流网格(无分页栏) ----
+    Item {
+        id: content_area
 
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        contentWidth: width
-        contentHeight: flow_footer.y + flow_footer.height + 12
         anchors {
             top: btn_refresh.bottom
             topMargin: 8
@@ -128,113 +179,114 @@ FluPage {
             leftMargin: 24
             rightMargin: 24
         }
-        onContentYChanged: page.maybeLoadMore()
 
-        // 瀑布流:最短列放置自绘(列宽 300 定宽、整体居中、无横向滚动),
-        // 与 LocalHistoryPage 同构(FluStaggeredLayout 无居中且刷新易错位)
-        Item {
-            id: masonry
+        GridView {
+            id: grid
+            objectName: "onlineHistoryGrid"
+            onHeightChanged: if (page.stateReady) page.queueRestore(page.liveAnchor)
+            onCellHeightChanged: if (page.stateReady) page.queueRestore(page.liveAnchor)
 
-            width: parent.width
-            height: Math.max(contentHeight, 1)
-            x: Math.max(0, Math.floor((width - gridWidth) / 2))
-            readonly property int columnWidth: 300
-            readonly property int rowGap: 16
-            property real contentHeight: 0
-
-            function relayout() {
-                var count = cards_repeater.count
-                if (count === 0) {
-                    masonry.contentHeight = 0
-                    return
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: page.gridColumns * cellWidth
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            cellWidth: page.gridCardWidth + 16
+            // 同一页面生命周期内只增高,避免矮卡片进入缓冲区导致整表反复收缩。
+            property real measuredCardHeight: 0
+            cellHeight: (measuredCardHeight || Math.ceil(page.gridCardWidth * 9 / 16) + 140) + 16
+            function measureCards() {
+                var tallest = measuredCardHeight
+                var delegates = contentItem.children
+                for (var i = 0; i < delegates.length; ++i) {
+                    if (delegates[i].cardHeight !== undefined)
+                        tallest = Math.max(tallest, delegates[i].cardHeight)
                 }
-                var heights = []
-                for (var i = 0; i < count; i++) {
-                    var card = cards_repeater.itemAt(i)
-                    if (!card) continue
-                    var col, top
-                    if (i < columnCount) {
-                        col = i
-                        top = 0
-                        heights.push(card.height)
-                    } else {
-                        var minHeight = Math.min.apply(null, heights)
-                        col = heights.indexOf(minHeight)
-                        top = minHeight + rowGap
-                        heights[col] = top + card.height
-                    }
-                    card.x = col * columnStride
-                    card.y = top
-                }
-                masonry.contentHeight = Math.max.apply(null, heights)
+                measuredCardHeight = tallest
+            }
+            model: cards_model
+            cacheBuffer: cellHeight
+            onMovementStarted: {
+                page.lastError = ""
+                page.autoRounds = 0
+                page.evaluateAutoChain()
+            }
+            onContentYChanged: {
+                if (!page.stateReady || page.restoringScroll || !page.scrollRestored) return
+                page.liveAnchor = page.captureAnchor()
+                page.maybeLoadMore()
             }
 
-            onWidthChanged: relayout()
-            // 布局后补轮:新卡片落位、内容高度增长后复查触底阈值(不足一屏时链式补齐)
-            onContentHeightChanged: Qt.callLater(page.maybeLoadMore)
+            delegate: Item {
+                id: cell
+                required property var cardData
+                readonly property real cardHeight: card.implicitHeight
+                onCardHeightChanged: Qt.callLater(grid.measureCards)
+                Component.onCompleted: Qt.callLater(grid.measureCards)
+                width: grid.cellWidth
+                height: grid.cellHeight
 
-            Repeater {
-                id: cards_repeater
+                HistoryCard {
+                    id: card
 
-                onCountChanged: Qt.callLater(masonry.relayout)
-
-                model: page.filteredItems
-
-                delegate: HistoryCard {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: page.gridCardWidth
+                    height: implicitHeight
+                    cardItem: cell.cardData
                     onAuthorClicked: function (author) {
                         AppController.openUserSpace(author.mid, author.name, author.faceUrl)
                     }
-                    id: card
-
-                    cardItem: modelData
-                    width: masonry.columnWidth
-                    height: implicitHeight
-                    onImplicitHeightChanged: Qt.callLater(masonry.relayout)
-                    Component.onCompleted: Qt.callLater(masonry.relayout)
                     onCoverClicked: function (sourceItem) {
                         // 点击封面 → 仅预览原图,不触发跳转(互斥契约)
                         cover_preview.show(card.baseUrl, sourceItem)
                     }
                 }
             }
-        }
 
-        // 列表底部状态条:续载加载中 / 已到底 / 失败可重试
-        Item {
-            id: flow_footer
+            // 列表底部状态条:续载加载中 / 已到底 / 失败可重试(随内容滚动)
+            footer: Item {
+                width: grid.width
+                height: 44
+                Row {
+                    spacing: 10
+                    anchors.centerIn: parent
+                    FluProgressRing {
+                        indeterminate: true
+                        strokeWidth: 3
+                        width: 20
+                        height: 20
+                        visible: OnlineHistoryController.busy && page.pool.length > 0
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    FluText {
+                        visible: OnlineHistoryController.busy && page.pool.length > 0
+                        text: qsTr("正在加载...")
+                        textColor: FluTheme.fontSecondaryColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    FluText {
+                        visible: OnlineHistoryController.ended && page.pool.length > 0
+                        text: qsTr("已经到底了")
+                        textColor: FluTheme.fontSecondaryColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    FluText {
+                        visible: !OnlineHistoryController.busy && !OnlineHistoryController.ended &&
+                                 page.pool.length > 0 && page.lastError !== ""
+                        text: qsTr("加载失败,滚动或点击右上角刷新重试")
+                        textColor: FluTheme.fontSecondaryColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
 
-            width: parent.width
-            height: 44
-            y: masonry.y + masonry.height + 8
-            Row {
-                spacing: 10
-                anchors.centerIn: parent
-                FluProgressRing {
-                    indeterminate: true
-                    strokeWidth: 3
-                    width: 20
-                    height: 20
-                    visible: OnlineHistoryController.busy && page.pool.length > 0
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                FluText {
-                    visible: OnlineHistoryController.busy && page.pool.length > 0
-                    text: qsTr("正在加载...")
-                    textColor: FluTheme.fontSecondaryColor
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                FluText {
-                    visible: OnlineHistoryController.ended && page.pool.length > 0
-                    text: qsTr("已经到底了")
-                    textColor: FluTheme.fontSecondaryColor
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                FluText {
-                    visible: !OnlineHistoryController.busy && !OnlineHistoryController.ended &&
-                             page.pool.length > 0 && page.lastError !== ""
-                    text: qsTr("加载失败,滚动或点击右上角刷新重试")
-                    textColor: FluTheme.fontSecondaryColor
-                    anchors.verticalCenter: parent.verticalCenter
+            ScrollBar.vertical: FluScrollBar {
+                parent: grid.parent
+                anchors {
+                    top: parent.top
+                    right: parent.right
+                    bottom: parent.bottom
                 }
             }
         }
@@ -264,8 +316,6 @@ FluPage {
                       : qsTr("正在查找匹配...")
             textColor: FluTheme.fontSecondaryColor
         }
-
-        ScrollBar.vertical: FluScrollBar {}
     }
 
     // ---- 空投影自动续链(轮间 400ms;不依赖滚动或布局事件) ----
@@ -274,7 +324,7 @@ FluPage {
 
         interval: 400
         onTriggered: {
-            if (page.filteredItems.length > 0 || OnlineHistoryController.busy ||
+            if (!page.stateReady || !page.needsFill() || page.lastError !== "" || OnlineHistoryController.busy ||
                 OnlineHistoryController.ended || page.autoRounds >= page.autoRoundLimit) return
             page.autoRounds++
             OnlineHistoryController.loadMore()
@@ -283,30 +333,26 @@ FluPage {
 
     // 链式推进入口:投影命中即复位;搜索中且未到底才续链(重复 evaluate 借
     // restart 去重,轮计数只在真正发起 loadMore 时累加)
+    function needsFill() {
+        return grid.contentHeight <= grid.height || page.filteredItems.length === 0
+    }
     function evaluateAutoChain() {
-        if (page.filteredItems.length > 0) {
-            page.autoRounds = 0
+        if (!stateReady || restoringScroll) return
+        if (!needsFill() || OnlineHistoryController.ended || lastError !== "") {
             auto_timer.stop()
             return
         }
-        if (!page.searching || OnlineHistoryController.ended) {
-            auto_timer.stop()
-            return
-        }
-        if (OnlineHistoryController.busy) return
-        if (page.autoRounds >= page.autoRoundLimit) {
-            auto_timer.stop()
-            return
-        }
+        if (OnlineHistoryController.busy || autoRounds >= autoRoundLimit) return
         auto_timer.restart()
     }
 
     // 触底续载:最后三行阈值内(行高按 封面 169 + 信息区约 150 ≈ 320 估)自动请求
     // 下一页;用户手势续载同时复位自动轮计数(从保留游标恢复)
     function maybeLoadMore() {
-        if (OnlineHistoryController.busy || OnlineHistoryController.ended) return
+        if (!stateReady || restoringScroll || needsFill() || OnlineHistoryController.busy || OnlineHistoryController.ended) return
         var threshold = 3 * 320
-        if (scroll_view.contentY + scroll_view.height >= scroll_view.contentHeight - threshold) {
+        if (grid.contentY + grid.height >= grid.contentHeight - threshold) {
+            page.lastError = ""
             page.autoRounds = 0
             OnlineHistoryController.loadMore()
         }
@@ -322,7 +368,7 @@ FluPage {
         radius: 20
         iconSource: FluentIcons.ChevronUp
         iconSize: 14
-        opacity: scroll_view.contentY > scroll_view.height + 4 ? 1 : 0
+        opacity: grid.contentY > grid.height + 4 ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation {
@@ -343,7 +389,7 @@ FluPage {
     NumberAnimation {
         id: scroll_anim
 
-        target: scroll_view
+        target: grid
         property: "contentY"
         to: 0
         duration: 240
@@ -378,13 +424,32 @@ FluPage {
         }
     }
 
-    // 重新提交搜索(含空词恢复):复位自动轮后按新词重新链式投影
+    // 重新提交搜索(含空词恢复):写回控制器供渲染释放/重建间保留,复位自动轮后
+    // 按新词重新链式投影
     onSearchQueryChanged: {
+        if (!stateReady) return
+        pendingAnchor = ({})
+        liveAnchor = ({})
+        OnlineHistoryController.scrollAnchor = ({})
+        OnlineHistoryController.scrollOffset = 0
+        scrollRestored = false
+        OnlineHistoryController.searchText = searchQuery
         page.autoRounds = 0
         page.evaluateAutoChain()
     }
 
+    // 渲染重建时若已保留数据(切页返回)则不重拉首页,仅从未拉取过才发起首页请求
     Component.onCompleted: {
-        OnlineHistoryController.refresh()
+        stateReady = true
+        syncCards()
+        OnlineHistoryController.ensureLoaded()
+    }
+
+    // 渲染即将释放(页面切走)前记忆滚动位置,供下次重建后首次 syncCards() 读回
+    Component.onDestruction: {
+        if (stateReady && scrollRestored) {
+            OnlineHistoryController.scrollAnchor = restoringScroll ? pendingAnchor : captureAnchor()
+            OnlineHistoryController.scrollOffset = Math.max(0, grid.contentY - grid.originY)
+        }
     }
 }

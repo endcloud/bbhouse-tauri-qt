@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QCoreApplication>
+#include <QPointer>
+#include <QQmlEngine>
 
 /**
  * @brief The Singleton class
@@ -12,8 +15,15 @@ public:
 
 template <typename T>
 T *Singleton<T>::getInstance() {
-    static T *instance = new T();
-    return instance;
+    // Several QML engines may use the same singleton in one process. An
+    // engine must not delete the shared instance and leave this cache dangling.
+    static QPointer<T> instance;
+    if (!instance) {
+        instance = new T();
+        instance->setParent(QCoreApplication::instance());
+        QQmlEngine::setObjectOwnership(instance, QQmlEngine::CppOwnership);
+    }
+    return instance.data();
 }
 
 #define SINGLETON(Class)                                                                           \

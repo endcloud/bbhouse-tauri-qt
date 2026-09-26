@@ -1,3 +1,4 @@
+#include "core/ControllerTask.h"
 #include "core/CardAuthor.h"
 #include "core/PlaybackEntry.h"
 #include "controllers/OnlineHistoryController.h"
@@ -18,6 +19,29 @@ OnlineHistoryController::OnlineHistoryController(QObject *parent) : QObject(pare
 
 bool OnlineHistoryController::busy() const { return busy_.load(); }
 
+bool OnlineHistoryController::loaded() const { return loaded_; }
+
+qreal OnlineHistoryController::scrollOffset() const { return scrollOffset_; }
+
+void OnlineHistoryController::setScrollOffset(qreal value) {
+    if (qFuzzyCompare(scrollOffset_ + 1, value + 1)) return;
+    scrollOffset_ = value;
+    emit scrollOffsetChanged();
+}
+
+void OnlineHistoryController::ensureLoaded() {
+    if (loaded_ || busy_.load()) return;
+    refresh();
+}
+
+QString OnlineHistoryController::searchText() const { return searchText_; }
+
+void OnlineHistoryController::setSearchText(const QString &value) {
+    if (searchText_ == value) return;
+    searchText_ = value;
+    emit searchTextChanged();
+}
+
 bool OnlineHistoryController::ended() const { return ended_; }
 
 bool OnlineHistoryController::unauthorized() const { return unauthorized_; }
@@ -25,6 +49,7 @@ bool OnlineHistoryController::unauthorized() const { return unauthorized_; }
 QVariantList OnlineHistoryController::pool() const { return pool_; }
 
 void OnlineHistoryController::refresh() {
+    if (busy_) return;
     const int generation = ++generation_;
     ended_ = false;
     unauthorized_ = false;
@@ -50,7 +75,7 @@ void OnlineHistoryController::startFetch(int generation) {
     emit busyChanged();
 
     const HistoryCursor cursor = cursor_;
-    QThreadPool::globalInstance()->start([this, generation, cursor] {
+    runControllerTask(this, [this, generation, cursor] {
         QList<HistoryItem> items;
         HistoryCursor nextCursor;
         bool hasCursor = false;
@@ -70,21 +95,23 @@ void OnlineHistoryController::startFetch(int generation) {
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, generation, items, nextCursor, hasCursor, error, unauthorized] {
-                    finishFetch(generation, items, nextCursor, hasCursor, error, unauthorized);
-                },
-                Qt::QueuedConnection);
+        return [this, generation, items, nextCursor, hasCursor, error, unauthorized] {
+            finishFetch(generation, items, nextCursor, hasCursor, error, unauthorized);
+        };
     });
 }
 
 void OnlineHistoryController::finishFetch(int generation, const QList<HistoryItem> &items,
                                           const HistoryCursor &nextCursor, bool hasCursor,
                                           const QString &error, bool unauthorized) {
+    if (generation != generation_) return;  // Expired page results cannot clear a newer busy state.
     busy_.store(false);
     emit busyChanged();
-    if (generation != generation_) return;  // 刷新后的过期回应
+
+    if (!loaded_) {
+        loaded_ = true;
+        emit loadedChanged();
+    }
 
     if (!error.isEmpty()) {
         // 失败不中断已加载内容,游标进度保留,后续滚动/刷新可重试
@@ -109,6 +136,7 @@ void OnlineHistoryController::finishFetch(int generation, const QList<HistoryIte
         pool_.append(toItemMap(item));
         poolDirty = true;
     }
+    if (poolDirty) trimPool();
 
     // 终止信号二/三:游标缺 business / 游标与上页相同(防死循环),
     // 口径与 HistorySyncRunner 一致
@@ -131,6 +159,16 @@ void OnlineHistoryController::setEnded() {
     if (ended_) return;
     ended_ = true;
     emit endedChanged();
+}
+
+void OnlineHistoryController::trimPool() {
+    // 内存安全上限,远高于正常单次浏览量;仅托底超长会话下的无限累积,
+    // 不改变到底判定/去重/搜索投影的正常路径(见 online-history-ui 规格)。
+    const int excess = pool_.size() - kMaxPoolEntries;
+    if (excess <= 0) return;
+    for (int i = 0; i < excess; ++i)
+        poolKeys_.remove(pool_.at(i).toMap().value("videoKey").toString());
+    pool_.remove(0, excess);
 }
 
 QVariantMap OnlineHistoryController::toItemMap(const HistoryItem &item) {
@@ -162,4 +200,28 @@ QString OnlineHistoryController::cursorKey(const HistoryCursor &cursor) {
             .arg(cursor.max)
             .arg(cursor.viewAt)
             .arg(cursor.business);
+}
+
+void OnlineHistoryController::releasePageCache() {
+    ++generation_;
+    busy_ = false;
+    ended_ = false;
+    unauthorized_ = false;
+    hasCursor_ = false;
+    cursor_ = {};
+    lastCursorKey_.clear();
+    pool_ = {};
+    poolKeys_ = {};
+    // 超时回收后重建页面必须重新拉取首页；导航记忆随数据一起失效。
+    loaded_ = false;
+    scrollAnchor_ = {};
+    scrollOffset_ = 0;
+    searchText_.clear();
+    emit loadedChanged();
+    emit scrollOffsetChanged();
+    emit searchTextChanged();
+    emit busyChanged();
+    emit endedChanged();
+    emit unauthorizedChanged();
+    emit poolChanged();
 }

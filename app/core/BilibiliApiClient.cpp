@@ -75,7 +75,9 @@ BilibiliApiClient *BilibiliApiClient::instance() {
 }
 
 BilibiliApiClient::BilibiliApiClient() {
-    thread_ = new QThread(this);
+    // The QThread control object stays with its creator, not with the worker
+    // QObject that is moved into the thread it controls.
+    thread_ = new QThread;
     thread_->setObjectName("bilibili-api");
     moveToThread(thread_);
     thread_->start();
@@ -95,8 +97,18 @@ QNetworkAccessManager *BilibiliApiClient::networkManager() {
 
 BilibiliApiClient::~BilibiliApiClient() {
     if (!thread_) return;
+    // Release network children on their own thread while its event loop is
+    // still alive. All callers must have joined before destroying the client.
+    QThread *destroyingThread = QThread::currentThread();
+    QMetaObject::invokeMethod(this, [this, destroyingThread] {
+        delete nam_;
+        nam_ = nullptr;
+        moveToThread(destroyingThread);
+    }, Qt::BlockingQueuedConnection);
     thread_->quit();
-    thread_->wait(3000);
+    thread_->wait();
+    delete thread_;
+    thread_ = nullptr;
 }
 
 BilibiliApiClient::Envelope BilibiliApiClient::get(const QUrl &url,

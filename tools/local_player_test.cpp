@@ -18,9 +18,10 @@
 #include "core/PlaybackEntry.h"
 #include "player/PlayerController.h"
 #include "player/MpvLib.h"
+#include "online_danmaku_loader_checks.h"
 #include <mpv/render.h>
 
-#ifdef Q_OS_MACOS
+#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
 int runLocalPlayerRenderTest(int argc, char **argv);
 #endif
 
@@ -101,12 +102,13 @@ QString AppPaths::normalCookiePath() { ++cookieReads; return testRoot + "/absent
 QString AppPaths::exportPath() { return testRoot + "/history.json"; }
 
 int main(int argc, char **argv) {
-#ifdef Q_OS_MACOS
-    if (argc > 1 && QByteArray(argv[1]) == "--macos-opengl")
+#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    if (argc > 1 && (QByteArray(argv[1]) == "--macos-opengl" || QByteArray(argv[1]) == "--windows-opengl"))
         return runLocalPlayerRenderTest(argc, argv);
 #endif
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
+    checkOnlineDanmakuReuse(check, [](const std::function<bool()> &predicate) { return until(predicate); });
     QTemporaryDir temp(QCoreApplication::applicationDirPath() + "/local-player-XXXXXX");
     check(temp.isValid(), "fixtures remain within build and clean themselves up");
     testRoot = temp.path();
@@ -268,5 +270,20 @@ int main(int argc, char **argv) {
     QThreadPool::globalInstance()->waitForDone();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     check(!QFileInfo::exists(AppPaths::dbPath()) && cookieReads == 0, "all local scenarios preserve online history and credentials");
+    // A missing isolated Cookie stops resolution before any network request.
+    // Deleting a controller must finish tasks that use its HistoryStore even
+    // without the application's global-pool shutdown barrier.
+    bool completedAtDestruction = true;
+    for (int i = 0; i < 8; ++i) {
+        const int before = cookieReads;
+        auto transient = std::make_unique<PlayerController>();
+        transient->openWith({QVariantMap{{"videoKey", "archive:1"}, {"business", "archive"},
+                                       {"oid", "1"}, {"title", "Offline teardown fixture"}}});
+        transient.reset();
+        completedAtDestruction &= cookieReads == before + 1;
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+    }
+    check(completedAtDestruction,
+          "controller destruction joins pending resolution before releasing its isolated store");
     return failures ? 1 : 0;
 }

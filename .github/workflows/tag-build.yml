@@ -96,8 +96,8 @@ jobs:
         shell: pwsh
         run: |
           # Native player programs compile here but require a separately supplied libmpv DLL to run.
-          'Windows: player-runtime, screenshot, live-player and local-player require libmpv and are excluded.' >> $env:GITHUB_STEP_SUMMARY
-          ctest --test-dir build/ci --output-on-failure --no-tests=error -LE requires-libmpv
+          'Windows: libmpv playback and native desktop/SMTC tests are excluded on this build-only runner. A runnable release must pass scripts/package-release.ps1 on a native desktop.' >> $env:GITHUB_STEP_SUMMARY
+          ctest --test-dir build/ci --output-on-failure --no-tests=error -LE 'requires-libmpv|requires-gui'
 
       - name: Test macOS without interactive graphics
         if: runner.os == 'macOS'

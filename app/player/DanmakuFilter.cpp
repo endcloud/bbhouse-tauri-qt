@@ -159,5 +159,8 @@ QVariantList DanmakuFilter::mergeSimilar(const QVariantList &entries) {
         active.push_back({output, input.time, type, 1, normalized, numeric, scalars});
         exact.insert(exactKey, output);
     }
+    // Dense identical input can collapse to just a handful of comments. Do not
+    // retain the full original reservation in the cached merged result.
+    result.squeeze();
     return result;
 }

@@ -1,5 +1,11 @@
 # 项目维护索引
 
+- 内存优化修复（2026-09-21）：[页面可靠性修复与手测](doc/内存优化修复与杜比用例验证.md)、[播放器换档与真实杜比实测](doc/播放器换档内存修复与杜比实测.md)。optimize-memory-footprint 补齐页面恢复、分页控件、动态首次追加序淘汰及裁剪锚点；reduce-player-memory-churn 复用同内容在途/已完成弹幕、增加默认关闭的白名单诊断。BV1omoHYzEST 在 Arc 140T 的 OpenGL d3d11va-copy 私有提交阶段末313→1679→313MiB，主要杜比台阶尚未消除；独立原生D3D11探针峰值约1210MiB不等于Qt集成完成。2026-09-23 以远端 `ExpiringPageLoader` 为基线变基，单活跃 Loader 被取代，超时回收同步清除搜索/页码/滚动记忆。两项change待用户手测，未归档；勿把原SUMMARY预测数字作为实测。新版mpv curl会在空代理时读取环境代理，媒体使用已显式直连的libavformat路径；[探针工具](tools/memory-review/README.md)。
+
+- 当前品牌与版本：BBHouse 2.0.3，Windows 启动入口 BBHouse.exe；Qt/CMake 内部标识和用户数据路径保持兼容，见 [2.0.3 发布](doc/BBHouse2.0.3发布.md)。Windows Release 首帧闪退（SMTC 匿名命名空间接口被 GCC 优化为错误调用）已于 2026-09-19 用户确认 pass 并归档；发布必须保留真实视频和原生媒体回归门禁。
+
+- 打包约定（2026-09-21 用户明确要求）：单纯版本更新和 Release 打包不需要 OpenSpec 介入，不创建、更新或归档 OpenSpec change；直接更新版本、构建验证、提交、打包并记录交付。实际功能变更仍使用 OpenSpec。
+
 - 默认使用中文。实现按 `openspec/` 的 spec-driven 流程记录；UI/UX 由用户手测，代理负责构建、静态审查和非交互回归。
 - 下载与本地媒体：[交付与手测](doc/下载管理与本地媒体库.md)、[主规格](openspec/specs/download-manager/spec.md)。`add-download-manager` 已于 2026-09-19 用户验收并同步归档；Windows 原生验证边界保留在交付文档。独立 downloads.sqlite；aria2 DASH、FFmpeg MP4/M4A、系统 curl XML/SRT，媒体直连且不持久化 Cookie/签名地址。本地起播等待当前 libmpv 渲染上下文就绪，不读 Cookie/写在线历史/发心跳；进度按 ID 更新卡片，勿每次替换列表。导入封面后台提取内嵌图片/首帧；移除默认只删记录，勾选才删关联文件并等待下载/封面进程结束，下载专属同名时间戳空目录随后清理，导入目录和含无关文件的目录保留。
 - 先读 [项目状态与构建](README.md)、[最新修复交付](doc/运行修复与手测清单.md)。历史交付说明不代表当前所有规格已实现。
@@ -42,6 +48,11 @@
 
 - 1.0.1 登录、关于与 CC 字幕：[交付与手测](doc/登录初始化与关于及CC字幕.md)。首次无格式有效 Cookie 显示独立登录窗口；扫码入口因用户测试反馈暂时隐藏，文本或文件导入经 nav 验证后原子保存到当前 Cookie 读取路径，失败保留旧凭据；设置末尾重新登录。关于独立导航，仓库为 endcloud/bbhouse-tauri-qt，逐项展示依赖与参考。标准播放器 CC 位于弹幕左侧，在线含 AI、本地内嵌/旁挂均可选；新内容默认关闭且不持久化，字幕异步结果隔离。应用和 macOS 包版本统一来自 CMake。[Cookie-Editor 导入帮助](doc/Cookie导入帮助.md) 同步于登录页，完整 Markdown 嵌入 `:/help/Cookie导入帮助.md` 随包分发；底部导航从上到下为设置、关于。该 change 已于 2026-09-19 用户确认并同步主规格归档；扫码仍隐藏，Windows 原生验证边界保留。
 
-- 全平台应用图标：[导入与手测](doc/全平台应用图标.md)。素材位于 `app/resources/icons/`；Qt/FluentUI/关于页使用内嵌 PNG，Windows 主程序与服务宿主编入 ICO，macOS 打包 ICNS 并校验，PNG/ICNS 主体统一为 824/1024 居中留白，原图保留且由 `scripts/generate-macos-icon.py` 生成；Linux DesktopIntegration 组件安装 desktop/hicolor 资源。`add-platform-app-icons` 待用户原生图标手测；外部素材只读。
+- 全平台应用图标：[导入与手测](doc/全平台应用图标.md)。素材位于 `app/resources/icons/`；Qt/FluentUI/关于页使用内嵌 PNG，Windows 主程序与服务宿主编入 ICO，macOS 打包 ICNS 并校验，PNG/ICNS 主体统一为 824/1024 居中留白，原图保留且由 `scripts/generate-macos-icon.py` 生成；Linux DesktopIntegration 组件安装 desktop/hicolor 资源。`add-platform-app-icons` 已于 2026-09-19 用户确认图标及 Dock 修复通过并同步归档；外部素材只读。
 
 - public 发布流程与 GitHub 认证：[发布与归档](doc/Qt源码发布与Tauri归档.md)。`migrate-public-repository` 已用户验收并同步归档。开发库与 `/Users/ziyu/Documents/code_g/bbhouse-tauri-qt` 是独立历史；后续按已授权范围白名单同步，保留 public README，排除原 .git/凭据/用户数据/构建产物/b3 链接；构建、CTest、隐私与规格校验后普通推送 master，核对远端 SHA，tauri 固定保留 d22550e。不得重复初始化或默认强推。Git 使用本机 SSH 认证为 endcloud；普通推送可能使用 Ruleset bypass，成功不等于已满足签名/PR 规则。文档维护不顺带发布开发新版本，tag/Release 另行授权。
+- public 2.0.3 同步与隐私复核（2026-09-26）：[交付记录](doc/public源码同步2.0.3.md)。白名单继续排除 CodeGraph 索引及两个旧编译库 `3rd/FluentUI/FluentUI/fluentuipluginplugin.lib` / `libfluentuipluginplugin.a`；完整 OpenSpec 归档同步，public README 保留。此次用户授权清理 public 的两个库与四个已归档图标旧记录，不扩大为今后项目外文件自动删除。
+
+- 应用名称与版本：[名称统一（2.0.2 起）](doc/BBHouse名称与版本更新.md)，当前 2.0.3。全局显示名统一 BBHouse，版本从 CMake 读取；内部 bbhouse-qt 标识、数据路径、可执行文件名与 bundle ID 保持兼容，避免已有凭据/历史失联。macOS 新包为 BBHouse.app，Windows 产品资源与发行目录同步品牌。`rename-app-bbhouse-2-0-2` 已于 2026-09-19 用户确认并同步归档，发行包待后续重建。
+
+- 内存与页面生命周期（2026-09-20）：[交付与手测](doc/内存生命周期与后台页面回收.md)、[指针所有权审计](doc/指针与资源所有权审计.md)。后台页面默认 5 分钟后卸载，设置可选 1/5/10/30 分钟；八类浏览控制器清理缓存并用 generation 拒绝旧结果。后台下载/同步/独立播放不随页面销毁。UP/榜单/番剧详情各保留最多 12 份缓存，头像内存元数据 512 项；QObject 父所有权、RAII、自有线程池析构等待和 watcher 回投必须保留。`optimize-memory-lifecycle` 待用户 UI/Windows 手测，未归档。

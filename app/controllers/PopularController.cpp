@@ -39,10 +39,14 @@ const PopularController::State &PopularController::state() const {
 
 void PopularController::invalidateFetch() {
     ++generation_;
-    cache_[key()].busy = false;
+    auto found = cache_.find(key());
+    if (found != cache_.end()) found->busy = false;
 }
 
 void PopularController::ensureLoaded() {
+    cacheUse_.removeAll(key());
+    cacheUse_.append(key());
+    while (cacheUse_.size() > 12) cache_.remove(cacheUse_.takeFirst());
     if (activeTab_ == "weekly" && weeklyNumber_ <= 0) {
         if (!periodsLoaded_ && !periodsBusy_ && periodsError_.isEmpty()) refreshPeriods();
         return;
@@ -96,6 +100,25 @@ void PopularController::selectWeek(int number) {
         emit stateChanged();
     }
     ensureLoaded();
+}
+
+void PopularController::setSearchText(const QString &value) {
+    if (searchText_ == value) return;
+    searchText_ = value;
+    emit searchTextChanged();
+}
+
+void PopularController::setScrollOffset(double value) {
+    if (qAbs(scrollOffset_ - value) < 0.5) return;  // 去抖:0.5px 内视为不变
+    scrollOffset_ = value;
+    emit scrollOffsetChanged();
+}
+
+void PopularController::setPageIndex(int value) {
+    value = qMax(1, value);
+    if (pageIndex_ == value) return;
+    pageIndex_ = value;
+    emit pageIndexChanged();
 }
 
 void PopularController::beginFetch(bool replace) {
@@ -182,6 +205,10 @@ void PopularController::finishFetch(quint64 generation, const QString &selection
     if (failure.isEmpty()) {
         if (replace_) current.items = additions;
         else current.items.append(additions);
+        // 累加模式(综合热门)下超出内存上限时从头部裁剪,保留最近追加的条目
+        if (activeTab_ == "popular" && current.items.size() > kMaxPoolSize) {
+            current.items = current.items.mid(current.items.size() - kMaxPoolSize);
+        }
         current.nextPage = page + 1;
         current.hasMore = activeTab_ == "popular" && result.hasMore;
         current.loaded = true;
@@ -248,4 +275,27 @@ void PopularController::finishPeriodsFetch(quint64 generation, const QVariantLis
     }
     emit stateChanged();
     if (error.isEmpty() && activeTab_ == "weekly") ensureLoaded();
+}
+
+void PopularController::releasePageCache() {
+    ++generation_;
+    ++periodsGeneration_;
+    cache_ = {};
+    cacheUse_ = {};
+    weeklyPeriods_ = {};
+    weeklyNumber_ = 0;
+    periodsBusy_ = false;
+    periodsLoaded_ = false;
+    periodsError_.clear();
+    replace_ = true;
+    pendingPage_ = 1;
+    scannedPages_ = 0;
+    // 页面记忆指向已丢弃的列表，超时后回到首屏。
+    searchText_.clear();
+    scrollOffset_ = 0;
+    pageIndex_ = 1;
+    emit stateChanged();
+    emit searchTextChanged();
+    emit scrollOffsetChanged();
+    emit pageIndexChanged();
 }

@@ -34,6 +34,10 @@ FluTheme::FluTheme(QObject *parent) : QObject{parent} {
     startTimer(1000);
 }
 
+FluTheme::~FluTheme() {
+    _wallpaperPool.waitForDone();
+}
+
 void FluTheme::refreshColors() {
     auto isDark = dark();
     primaryColor(isDark ? _accentColor->lighter() : _accentColor->dark());
@@ -78,20 +82,23 @@ bool FluTheme::dark() const {
 }
 
 void FluTheme::checkUpdateDesktopImage() {
-    if (!_blurBehindWindowEnabled) {
+    if (!_blurBehindWindowEnabled || _wallpaperPending) {
         return;
     }
-    QThreadPool::globalInstance()->start([=]() {
-        _mutex.lock();
-        auto path = FluTools::getInstance()->getWallpaperFilePath();
-        if (_desktopImagePath != path) {
+    _wallpaperPending = true;
+    _wallpaperPool.start([this]() {
+        // Use a pure query so the worker never retains another singleton
+        // while application children are being destroyed.
+        const QString path = FluTools::wallpaperFilePath();
+        QMetaObject::invokeMethod(this, [this, path] {
+            _wallpaperPending = false;
+            if (!_blurBehindWindowEnabled || _desktopImagePath == path) return;
             if (!_desktopImagePath.isEmpty()) {
                 _watcher.removePath(_desktopImagePath);
             }
             desktopImagePath(path);
-            _watcher.addPath(path);
-        }
-        _mutex.unlock();
+            if (!path.isEmpty()) _watcher.addPath(path);
+        }, Qt::QueuedConnection);
     });
 }
 

@@ -11,10 +11,10 @@ FluHotkey::FluHotkey(QObject *parent) : QObject{parent} {
             delete _hotkey;
             _hotkey = nullptr;
         }
-        _hotkey = new QHotkey(QKeySequence(_sequence), true, qApp);
+        _hotkey = new QHotkey(QKeySequence(_sequence), true, this);
         this->isRegistered(_hotkey->isRegistered());
-        QObject::connect(_hotkey, &QHotkey::activated, qApp, [=]() { Q_EMIT this->activated(); });
-        QObject::connect(_hotkey, &QHotkey::registeredChanged, qApp,
+        QObject::connect(_hotkey, &QHotkey::activated, this, [=]() { Q_EMIT this->activated(); });
+        QObject::connect(_hotkey, &QHotkey::registeredChanged, this,
                          [=]() { this->isRegistered(_hotkey->isRegistered()); });
     });
 }

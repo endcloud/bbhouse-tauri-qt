@@ -3,7 +3,12 @@
 #include <QThread>
 #include <QDebug>
 #include <QPointer>
+#include <QJsonDocument>
 #include <cmath>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <psapi.h>
+#endif
 
 #include <mpv/client.h>
 
@@ -53,6 +58,11 @@ MpvClient *MpvClient::create(QObject *parent) {
     // API proxy credentials must never enter the media engine.
     setOpt("http-proxy", "");
     setOpt("stream-lavf-o", "http_proxy=");
+    // 新版 mpv curl 后端在空 http-proxy 时仍读取进程代理环境；使用已显式
+    // 配置直连的 libavformat。旧版没有此选项，本来就使用该传输路径。
+    const int curlOption = lib->setOptionString(handle, "curl-enabled", "no");
+    if (curlOption < 0 && curlOption != MPV_ERROR_OPTION_NOT_FOUND)
+        qWarning() << "mpv option curl-enabled" << lib->errorString(curlOption);
     setOpt("terminal", "no");
     setOpt("keep-open", "always");
     setOpt("loop-file", "no");
@@ -94,7 +104,45 @@ MpvClient *MpvClient::create(QObject *parent) {
         client->observeProperty(QString::fromUtf8(name), MPV_FORMAT_DOUBLE);
     for (const char *name : kObservedString)
         client->observeProperty(QString::fromUtf8(name), MPV_FORMAT_STRING);
+    if (qEnvironmentVariable("BBHOUSE_PLAYER_DIAGNOSTICS") == "1") {
+        auto *timer = new QTimer(client);
+        timer->setInterval(5000);
+        connect(timer, &QTimer::timeout, client, [client] {
+            qInfo().noquote() << "BBHOUSE_PLAYER_DIAGNOSTICS"
+                << QJsonDocument::fromVariant(client->diagnosticSnapshot()).toJson(QJsonDocument::Compact);
+        });
+        timer->start();
+    }
     return client;
+}
+
+QVariantMap MpvClient::diagnosticSnapshot() const {
+    QVariantMap values;
+    for (const char *key : {"hwdec-current", "current-vo", "video-format",
+             "video-params/pixelformat", "video-params/hw-pixelformat",
+             "video-params/primaries", "video-params/gamma", "video-params/colormatrix",
+             "video-dec-params/pixelformat", "video-dec-params/primaries", "video-dec-params/gamma"})
+        values.insert(QString::fromLatin1(key), getPropertyString(QString::fromLatin1(key)));
+    for (const char *key : {"video-params/w", "video-params/h", "video-params/sig-peak",
+             "estimated-vf-fps", "decoder-frame-drop-count", "frame-drop-count",
+             "demuxer-cache-duration", "demuxer-cache-state/fw-bytes",
+             "demuxer-cache-state/total-bytes", "options/demuxer-max-bytes",
+             "options/demuxer-max-back-bytes", "options/vd-lavc-threads", "options/hwdec-threads"}) {
+        bool ok = false;
+        const double value = getPropertyString(QString::fromLatin1(key)).toDouble(&ok);
+        if (ok && std::isfinite(value)) values.insert(QString::fromLatin1(key), value);
+    }
+#ifdef Q_OS_WIN
+    using GetMemory = BOOL (WINAPI *)(HANDLE, PPROCESS_MEMORY_COUNTERS, DWORD);
+    const auto getMemory = reinterpret_cast<GetMemory>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "K32GetProcessMemoryInfo"));
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+    if (getMemory && getMemory(GetCurrentProcess(), reinterpret_cast<PPROCESS_MEMORY_COUNTERS>(&counters), sizeof(counters))) {
+        values.insert("process-private-commit-bytes", qulonglong(counters.PrivateUsage));
+        values.insert("process-working-set-bytes", qulonglong(counters.WorkingSetSize));
+    }
+#endif
+    return values;
 }
 
 QString MpvClient::lastCreateError() { return createError; }
@@ -273,9 +321,14 @@ int MpvClient::command(const QStringList &args) {
 quint64 MpvClient::commandAsync(const QStringList &args, QObject *context,
                               std::function<void(int)> completion) {
     const QPointer<QObject> receiver(context);
-    auto deliver = [receiver, completion = std::move(completion)](int result) {
+    const QPointer<MpvClient> client(this);
+    auto deliver = [receiver, client, completion = std::move(completion)](int result) {
         if (!receiver) return;
-        QMetaObject::invokeMethod(receiver, [completion, result] { completion(result); },
+        QMetaObject::invokeMethod(receiver, [client, completion, result] {
+            // A reply can already be queued to a longer-lived controller when
+            // this client is replaced/destroyed. Cancel that delivery as well.
+            if (client) completion(result);
+        },
                                   Qt::QueuedConnection);
     };
     if (!handle_ || args.isEmpty()) {

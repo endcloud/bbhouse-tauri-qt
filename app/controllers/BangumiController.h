@@ -34,8 +34,13 @@ class BangumiController : public QObject {
     Q_PROPERTY(int currentPage READ currentPage NOTIFY pageInfoChanged)
     Q_PROPERTY(qint64 currentTotal READ currentTotal NOTIFY pageInfoChanged)
     Q_PROPERTY(int currentBucket READ currentBucket NOTIFY currentBucketChanged)
+    // 页面档位记忆(anime/guochuang/movie/documentary/regional;渲染释放时保留,重建后回显)
+    Q_PROPERTY(QString currentTab READ currentTab WRITE setCurrentTab NOTIFY currentTabChanged)
+    // 港澳台搜索词记忆(渲染释放时保留,重建后回显;常规档搜索为纯页面本地投影不记忆)
+    Q_PROPERTY(QString regionalSearch READ regionalSearch NOTIFY regionalSearchChanged)
    public:
     explicit BangumiController(QObject *parent = nullptr);
+    Q_INVOKABLE void releasePageCache();
 
     bool busy() const;
     bool unauthorized() const;
@@ -43,6 +48,9 @@ class BangumiController : public QObject {
     int currentPage() const;
     qint64 currentTotal() const;
     int currentBucket() const;
+    QString currentTab() const { return currentTab_; }
+    void setCurrentTab(const QString &tab);
+    QString regionalSearch() const { return regionalSearch_; }
 
     // 换桶(1=追番,2=追剧,3=港澳台;其余值忽略):目标桶已记忆页码 → 纯切换零网络;
     // 未装载 → 拉第 1 页(忙碌期间排队,在途请求完成后自动补拉)
@@ -66,6 +74,8 @@ class BangumiController : public QObject {
     void pageItemsChanged();
     void pageInfoChanged();
     void currentBucketChanged();
+    void currentTabChanged();
+    void regionalSearchChanged();
     // seasonDetail 未命中缓存时的异步结果(seasonId/title/episodes[epId,cid,
     // title,longTitle,duration,badge]/lastEpId/lastTimeSeconds)
     void seasonDetailReady(QVariantMap detail);
@@ -101,8 +111,11 @@ class BangumiController : public QObject {
     QList<BangumiApi::BangumiSeason> regionalItems_;
     QString regionalSearch_;
     int currentBucket_ = 1;
+    QStringList seasonCacheUse_;
+    QString currentTab_ = QStringLiteral("anime");  // 页面档位记忆
     QHash<QString, QVariantMap> seasonCache_;  // regional + seasonId，代理变更时清空
     bool unauthorized_ = false;
+    quint64 listGeneration_ = 0;
     bool busy_ = false;
     bool seasonBusy_ = false;
     quint64 seasonGeneration_ = 0;

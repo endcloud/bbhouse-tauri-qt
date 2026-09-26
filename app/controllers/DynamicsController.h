@@ -61,8 +61,12 @@ class DynamicsController : public QObject {
                        searchTextChanged)
     // 分区解析未决(视频档下仍有待补查视频);QML 据此门控空匹配终态
     Q_PROPERTY(bool zoneGateActive READ zoneGateActive NOTIFY zoneGateActiveChanged)
+    // 页面渲染释放前记忆的滚动位置,重建后据此恢复(不参与业务逻辑)
+    Q_PROPERTY(qreal scrollOffset READ scrollOffset WRITE setScrollOffset NOTIFY scrollOffsetChanged)
+    Q_PROPERTY(QVariantMap scrollAnchor MEMBER scrollAnchor_ NOTIFY scrollAnchorChanged)
    public:
     explicit DynamicsController(QObject *parent = nullptr);
+    Q_INVOKABLE void releasePageCache();
 
     bool busy() const;
     bool ended() const;
@@ -79,6 +83,8 @@ class DynamicsController : public QObject {
     void setCategoryFilter(const QString &value);
     void setZoneFilter(const QString &value);
     void setSearchText(const QString &value);
+    qreal scrollOffset() const;
+    void setScrollOffset(qreal value);
 
     // 重置 offset 与去重分组重拉首页(既有池保留至新数据到达,筛选档位不变;
     // busy 期间重复触发在此兜底)
@@ -91,12 +97,15 @@ class DynamicsController : public QObject {
     void endedChanged();
     void unauthorizedChanged();
     void poolChanged();
+    void itemsAboutToChange();
     void itemsChanged();
     void zoneNamesChanged();
     void categoryFilterChanged();
     void zoneFilterChanged();
     void searchTextChanged();
     void zoneGateActiveChanged();
+    void scrollOffsetChanged();
+    void scrollAnchorChanged();
     // 登录失效/网络失败等(message 为本地化文案,QML 经 InfoBar 呈现;已加载内容保留)
     void loadFailed(QString message);
 
@@ -136,6 +145,8 @@ class DynamicsController : public QObject {
     void pumpZoneQueue();
     void applyZoneResult(qint64 aid, const QString &zoneName);
     void setEnded();
+    // 按首次追加顺序淘汰,与展示用 pubTs 排序及代表条目替换解耦。
+    void trimPool();
     static QVariantMap toItemMap(const DynamicFeedItem &item);
 
     int generation_ = 0;         // 刷新递增,使在途回应作废(主线程读写)
@@ -143,6 +154,8 @@ class DynamicsController : public QObject {
     bool unauthorized_ = false;  // 主线程
     bool refreshPending_ = false;  // 刷新后未成功重建池(成功一轮即整体替换)
     QString offset_;             // 下一页 offset(空 = 首页;主线程)
+    quint64 nextPoolOrder_ = 0;
+    QVariantMap scrollAnchor_;
     QVariantList pool_;          // 去重后全量池(pubTs 降序;主线程)
     QVariantList items_;         // 当前筛选投影(主线程)
     DynamicCardModel cardModel_;
@@ -159,9 +172,12 @@ class DynamicsController : public QObject {
     // 分区补查:会话缓存 + 250ms 串行队列(仅视频档排空;非视频档不发请求)
     QHash<qint64, QString> zoneCache_;
     QList<qint64> pendingZoneAids_;
+    quint64 zoneGeneration_ = 0;
     bool zoneInFlight_ = false;
     bool zoneGateActive_ = false;
     QTimer zoneTimer_;
+
+    qreal scrollOffset_ = 0;  // 页面渲染释放前记忆的滚动位置(主线程,纯 UI 状态)
 
     std::atomic_bool busy_{false};
 };

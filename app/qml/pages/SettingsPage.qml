@@ -189,6 +189,29 @@ FluPage {
                 }
             }
 
+            FluFrame {
+                width: parent.width
+                height: memory_settings.implicitHeight + 24
+                Column {
+                    id: memory_settings
+                    anchors { left: parent.left; right: parent.right; top: parent.top;
+                        leftMargin: 16; rightMargin: 16; topMargin: 12 }
+                    spacing: 12
+                    FluText { text: qsTr("后台页面保留时间"); font: FluTextStyle.BodyStrong }
+                    FluComboBox {
+                        width: 180
+                        model: [qsTr("1 分钟"), qsTr("5 分钟"), qsTr("10 分钟"), qsTr("30 分钟")]
+                        currentIndex: [1, 5, 10, 30].indexOf(AppPreferences.pageCacheMinutes)
+                        onActivated: AppPreferences.pageCacheMinutes = [1, 5, 10, 30][currentIndex]
+                    }
+                    FluText {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: qsTr("离开页面后超时释放内存，返回时重新加载。下载、历史同步和播放继续运行。")
+                    }
+                }
+            }
+
             FluExpander {
                 id: download_settings
                 objectName: "downloadSettings"

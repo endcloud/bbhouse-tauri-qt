@@ -43,8 +43,11 @@ DanmakuEngine::DanmakuEngine(QQuickItem *parent) : QQuickItem(parent) {
     connect(this, &QQuickItem::visibleChanged, this, &DanmakuEngine::scheduleFrame);
     connect(&mergeWatcher_, &QFutureWatcher<QVariantList>::finished, this, [this] {
         mergeRunning_ = false;
+        // takeResult also removes QFuture's owning reference. A persistent
+        // watcher must not retain the last video's list after loadEntries({}).
+        const auto merged = mergeWatcher_.future().takeResult();
         if (mergingRevision_ == sourceRevision_) {
-            mergedEntries_ = mergeWatcher_.result();
+            mergedEntries_ = merged;
             mergedReady_ = true;
             if (mergeSimilar_) applyEntries(mergedEntries_);
         }

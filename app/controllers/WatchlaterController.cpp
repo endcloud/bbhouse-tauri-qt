@@ -1,3 +1,4 @@
+#include "core/ControllerTask.h"
 #include "core/CardAuthor.h"
 #include "controllers/WatchlaterController.h"
 
@@ -19,12 +20,25 @@ bool WatchlaterController::loaded() const { return loaded_; }
 
 QVariantList WatchlaterController::pool() const { return pool_; }
 
+void WatchlaterController::setSearchText(const QString &value) {
+    if (searchText_ == value) return;
+    searchText_ = value;
+    emit searchTextChanged();
+}
+
+void WatchlaterController::setPageIndex(int value) {
+    if (pageIndex_ == value) return;
+    pageIndex_ = value;
+    emit pageIndexChanged();
+}
+
 void WatchlaterController::refresh() {
     // busy 单闸门:请求期间重复触发在此兜底
     if (busy_.exchange(true)) return;
     emit busyChanged();
 
-    QThreadPool::globalInstance()->start([this] {
+    const auto generation = generation_;
+    runControllerTask(this, [this, generation] {
         QList<HistoryItem> items;
         QString error;
         bool unauthorized = false;
@@ -38,33 +52,31 @@ void WatchlaterController::refresh() {
         } catch (const std::exception &e) {
             error = QString::fromUtf8(e.what());
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, items, error, unauthorized] {
-                    busy_.store(false);
-                    emit busyChanged();
-                    if (!error.isEmpty()) {
-                        // 失败保留既有池(刷新保旧卡语义)
-                        unauthorized_ = unauthorized;
-                        emit unauthorizedChanged();
-                        emit loadFailed(error);
-                        return;
-                    }
-                    unauthorized_ = false;
-                    emit unauthorizedChanged();
-                    // 整体替换:QML 侧经 poolChanged 绑定原子切换,不闪空白
-                    pool_.clear();
-                    pool_.reserve(items.size());
-                    for (const HistoryItem &item : items) {
-                        pool_.append(toItemMap(item));
-                    }
-                    if (!loaded_) {
-                        loaded_ = true;
-                        emit loadedChanged();
-                    }
-                    emit poolChanged();
-                },
-                Qt::QueuedConnection);
+        return [this, generation, items, error, unauthorized] {
+            if (generation != generation_) return;
+            busy_.store(false);
+            emit busyChanged();
+            if (!error.isEmpty()) {
+                // 失败保留既有池(刷新保旧卡语义)
+                unauthorized_ = unauthorized;
+                emit unauthorizedChanged();
+                emit loadFailed(error);
+                return;
+            }
+            unauthorized_ = false;
+            emit unauthorizedChanged();
+            // 整体替换:QML 侧经 poolChanged 绑定原子切换,不闪空白
+            pool_.clear();
+            pool_.reserve(items.size());
+            for (const HistoryItem &item : items) {
+                pool_.append(toItemMap(item));
+            }
+            if (!loaded_) {
+                loaded_ = true;
+                emit loadedChanged();
+            }
+            emit poolChanged();
+        };
     });
 }
 
@@ -97,4 +109,20 @@ QVariantMap WatchlaterController::toItemMap(const HistoryItem &item) {
     // 失效稿件标记(state<0);标题占位与禁播呈现由 UI 层按本地化处理
     map.insert("invalid", ToviewApi::isInvalidEntry(item.rawJson));
     return map;
+}
+
+void WatchlaterController::releasePageCache() {
+    ++generation_;
+    busy_ = false;
+    unauthorized_ = false;
+    loaded_ = false;
+    pool_ = {};
+    searchText_.clear();
+    pageIndex_ = 1;
+    emit busyChanged();
+    emit searchTextChanged();
+    emit pageIndexChanged();
+    emit unauthorizedChanged();
+    emit loadedChanged();
+    emit poolChanged();
 }

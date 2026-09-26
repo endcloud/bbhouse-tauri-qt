@@ -73,17 +73,25 @@ qt_add_executable(bbhouse-qt
 if(WIN32)
     enable_language(RC)
     set(BBHOUSE_WINDOWS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/icon.ico")
+    set(BBHOUSE_FILE_DESCRIPTION "BBHouse")
+    set(BBHOUSE_EXECUTABLE_FILENAME "BBHouse.exe")
     configure_file(resources/icons/icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" @ONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" PROPERTIES
         OBJECT_DEPENDS "${BBHOUSE_WINDOWS_ICON}")
     target_sources(bbhouse-qt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
+    set_target_properties(bbhouse-qt PROPERTIES OUTPUT_NAME "BBHouse")
+    set(BBHOUSE_FILE_DESCRIPTION "BBHouse History Service")
+    set(BBHOUSE_EXECUTABLE_FILENAME "bbhouse-history-service.exe")
+    configure_file(resources/icons/icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/service-icon.rc" @ONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/service-icon.rc" PROPERTIES
+        OBJECT_DEPENDS "${BBHOUSE_WINDOWS_ICON}")
 endif()
 
 # Native SCM/UAC host deliberately has no Qt imports: it must start outside
 # Qt Creator's PATH. The host supplies captured runtime paths to the Qt worker.
 if(WIN32)
     add_executable(bbhouse-history-service windows/HistoryServiceHost.cpp
-        "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
+        "${CMAKE_CURRENT_BINARY_DIR}/service-icon.rc")
     target_compile_definitions(bbhouse-history-service PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(bbhouse-history-service PRIVATE advapi32 shell32 ole32 oleaut32 taskschd uuid)
     set_target_properties(bbhouse-history-service PROPERTIES AUTOMOC OFF AUTORCC OFF AUTOUIC OFF)
@@ -132,6 +140,7 @@ qt_add_qml_module(bbhouse-qt
         qml/PlayerWindow.qml
         qml/controls/PlayerControls.qml
         qml/controls/PlayerControlButton.qml
+        qml/controls/ExpiringPageLoader.qml
         qml/controls/PageSearchBox.qml
         qml/controls/CoverPreviewOverlay.qml
         qml/controls/HistoryCard.qml
@@ -159,6 +168,12 @@ function(bbhouse_add_icon_resources target)
         FILES resources/icons/bbhouse-icon-1024.png resources/icons/bbhouse-icon-1024-mac.png)
 endfunction()
 bbhouse_add_icon_resources(bbhouse-qt)
+if(WIN32)
+    qt_add_resources(bbhouse-qt "deployment_video_fixture"
+        PREFIX "/deployment"
+        BASE "${CMAKE_SOURCE_DIR}/tools/fixtures"
+        FILES "${CMAKE_SOURCE_DIR}/tools/fixtures/screenshot-red-h264.mp4")
+endif()
 
 # Desktop integration only; Linux runtime/dependency packaging is distro-specific.
 if(UNIX AND NOT APPLE)
@@ -178,10 +193,14 @@ qt_add_resources(bbhouse-qt "app_images"
 )
 
 # 导入帮助直接嵌入可执行文件，开发运行及各平台发行包共用同一份文档。
+# MinGW Makefiles cannot reliably resolve non-ASCII file dependencies on Windows.
+# Stage the document under an ASCII filename while preserving its public resource URL.
+set(BBHOUSE_COOKIE_HELP "${CMAKE_CURRENT_BINARY_DIR}/help/cookie-import-help.md")
+configure_file("${CMAKE_SOURCE_DIR}/doc/Cookie导入帮助.md" "${BBHOUSE_COOKIE_HELP}" COPYONLY)
+set_source_files_properties("${BBHOUSE_COOKIE_HELP}" PROPERTIES QT_RESOURCE_ALIAS "Cookie导入帮助.md")
 qt_add_resources(bbhouse-qt "app_help"
         PREFIX "/help"
-        BASE "${CMAKE_SOURCE_DIR}/doc"
-        FILES "${CMAKE_SOURCE_DIR}/doc/Cookie导入帮助.md"
+        FILES "${BBHOUSE_COOKIE_HELP}"
 )
 
 # i18n: en-US 翻译(lrelease 产物嵌入资源 :/i18n/)
@@ -307,7 +326,7 @@ endif ()
 add_custom_target(deploy
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/deploy
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/deploy
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/bbhouse-qt.exe ${CMAKE_BINARY_DIR}/deploy/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bbhouse-qt> ${CMAKE_BINARY_DIR}/deploy/
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bbhouse-history-service> ${CMAKE_BINARY_DIR}/deploy/
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/FluentUI ${CMAKE_BINARY_DIR}/deploy/FluentUI
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/fluentuiplugin.dll ${CMAKE_BINARY_DIR}/deploy/
@@ -318,7 +337,7 @@ add_custom_target(deploy
         ${_bbhouse_deploy_runtime_cmd}
         COMMAND ${WINDEPLOYQT_EXE} --no-compiler-runtime --no-system-d3d-compiler
                 --qmldir ${CMAKE_CURRENT_SOURCE_DIR}/qml
-                ${CMAKE_BINARY_DIR}/deploy/bbhouse-qt.exe
+                ${CMAKE_BINARY_DIR}/deploy/$<TARGET_FILE_NAME:bbhouse-qt>
         COMMAND ${CMAKE_COMMAND} -E copy
                 "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
                 "${CMAKE_BINARY_DIR}/deploy/"
@@ -440,6 +459,48 @@ add_executable(dynamics-controller-test EXCLUDE_FROM_ALL ../tools/dynamics_contr
 target_include_directories(dynamics-controller-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(dynamics-controller-test PRIVATE Qt6::Qml Qt6::Network)
 add_test(NAME dynamics-controller COMMAND dynamics-controller-test)
+
+add_executable(dynamics-page-test EXCLUDE_FROM_ALL ../tools/dynamics_page_test.cpp
+        controllers/DynamicCardModel.h controllers/DynamicCardModel.cpp
+        controllers/DynamicsController.h controllers/DynamicsController.cpp
+        core/DynamicApi.h core/DynamicApi.cpp core/VideoZoneApi.h core/VideoZoneApi.cpp
+        core/VideoZones.h core/VideoZones.cpp core/AppPaths.h core/AppPaths.cpp
+        core/BilibiliApiClient.h core/BilibiliApiClient.cpp)
+target_include_directories(dynamics-page-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(dynamics-page-test PRIVATE Qt6::Quick Qt6::Widgets Qt6::Network fluentuiplugin)
+target_compile_definitions(dynamics-page-test PRIVATE DYNAMICS_QML_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+add_test(NAME dynamics-page COMMAND dynamics-page-test)
+
+add_executable(online-history-page-test EXCLUDE_FROM_ALL ../tools/online_history_page_test.cpp)
+target_link_libraries(online-history-page-test PRIVATE Qt6::Quick Qt6::Widgets fluentuiplugin)
+target_compile_definitions(online-history-page-test PRIVATE ONLINE_QML_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+add_test(NAME online-history-page COMMAND online-history-page-test)
+
+add_executable(page-state-restore-test EXCLUDE_FROM_ALL ../tools/page_state_restore_test.cpp)
+target_link_libraries(page-state-restore-test PRIVATE Qt6::Quick Qt6::Widgets fluentuiplugin)
+target_compile_definitions(page-state-restore-test PRIVATE PAGE_STATE_QML_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+add_test(NAME page-state-restore COMMAND page-state-restore-test)
+
+add_executable(special-follow-page-test EXCLUDE_FROM_ALL ../tools/special_follow_page_test.cpp
+        controllers/SpecialFollowController.h controllers/SpecialFollowController.cpp
+        controllers/SpecialFollowStore.h controllers/SpecialFollowStore.cpp
+        core/ArcSearchApi.h core/ArcSearchApi.cpp
+        core/ArticleApi.h core/ArticleApi.cpp core/SeasonsApi.h core/SeasonsApi.cpp
+        core/RelationApi.h core/RelationApi.cpp
+        core/BilibiliApiClient.h core/BilibiliApiClient.cpp
+        core/AppPaths.h core/AppPaths.cpp core/WbiSigner.h core/WbiSigner.cpp)
+target_include_directories(special-follow-page-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(special-follow-page-test PRIVATE Qt6::Quick Qt6::Widgets Qt6::Network fluentuiplugin)
+target_compile_definitions(special-follow-page-test PRIVATE SPECIAL_QML_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+add_test(NAME special-follow-page COMMAND special-follow-page-test)
+
+add_executable(online-history-controller-test EXCLUDE_FROM_ALL ../tools/online_history_controller_test.cpp
+        controllers/OnlineHistoryController.h controllers/OnlineHistoryController.cpp
+        core/HistoryApi.h core/HistoryApi.cpp core/AppPaths.h core/AppPaths.cpp
+        core/BilibiliApiClient.h core/BilibiliApiClient.cpp)
+target_include_directories(online-history-controller-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(online-history-controller-test PRIVATE Qt6::Qml Qt6::Network)
+add_test(NAME online-history-controller COMMAND online-history-controller-test)
 
 # 离屏信号/状态回归，不代替页面 UI/UX 手测。
 add_executable(page-search-test EXCLUDE_FROM_ALL ../tools/page_search_test.cpp)
@@ -641,13 +702,21 @@ endif()
 add_test(NAME local-player COMMAND local-player-test)
 set_tests_properties(local-player PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" LABELS "requires-libmpv")
 bbhouse_copy_mpv_dll(local-player-test)
-if(APPLE)
+if(APPLE OR WIN32)
     target_sources(local-player-test PRIVATE ../tools/local_player_render_test.cpp)
+    configure_file(../tools/fixtures/screenshot-red-h264.mp4
+                   ${CMAKE_CURRENT_BINARY_DIR}/screenshot-red-h264.mp4 COPYONLY)
     target_compile_definitions(local-player-test PRIVATE
         BBHOUSE_LOCAL_VIDEO_FIXTURE="${CMAKE_CURRENT_BINARY_DIR}/screenshot-red-h264.mp4")
-    add_test(NAME local-player-macos COMMAND local-player-test --macos-opengl)
-    set_tests_properties(local-player-macos PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=cocoa" LABELS "requires-libmpv;requires-gui" TIMEOUT 30)
+    if(APPLE)
+        add_test(NAME local-player-macos COMMAND local-player-test --macos-opengl)
+        set_tests_properties(local-player-macos PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=cocoa" LABELS "requires-libmpv;requires-gui" TIMEOUT 30)
+    else()
+        add_test(NAME local-player-windows COMMAND local-player-test --windows-opengl)
+        set_tests_properties(local-player-windows PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_QUICK_BACKEND=rhi" LABELS "requires-libmpv;requires-gui" TIMEOUT 30)
+    endif()
 endif()
 
 add_executable(download-page-test EXCLUDE_FROM_ALL ../tools/download_page_test.cpp)
@@ -701,7 +770,21 @@ target_link_libraries(login-page-test PRIVATE Qt6::Widgets Qt6::Quick Qt6::Qml Q
 add_dependencies(login-page-test fluentuiplugin)
 add_test(NAME login-page COMMAND login-page-test)
 
+# Exercise the real QML Loader lifetime without network or user data.
+add_executable(page-lifecycle-test EXCLUDE_FROM_ALL ../tools/page_lifecycle_test.cpp)
+target_link_libraries(page-lifecycle-test PRIVATE Qt6::Quick)
+target_compile_definitions(page-lifecycle-test PRIVATE
+        PAGE_LOADER_QML_PATH="${CMAKE_CURRENT_SOURCE_DIR}/qml/controls/ExpiringPageLoader.qml")
+add_test(NAME page-lifecycle COMMAND page-lifecycle-test)
+
+add_executable(fluent-ownership-test EXCLUDE_FROM_ALL ../tools/fluent_ownership_test.cpp
+        ../3rd/FluentUI/FluTreeModel.h ../3rd/FluentUI/FluTreeModel.cpp)
+target_include_directories(fluent-ownership-test PRIVATE ../3rd/FluentUI)
+target_link_libraries(fluent-ownership-test PRIVATE Qt6::Core Qt6::Qml)
+add_test(NAME fluent-ownership COMMAND fluent-ownership-test)
+
 # CI 构建所有已登记的回归程序，避免新增测试后漏改各平台工作流。
+include(SystemMediaWindowsTest.cmake)
 add_custom_target(regression-tests)
 get_property(_bbhouse_app_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach (_bbhouse_test_target IN LISTS _bbhouse_app_targets)

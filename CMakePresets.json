@@ -93,7 +93,13 @@
         "history-controller-test",
         "download-test",
         "download-page-test",
-        "local-player-test"
+        "local-player-test",
+        "download-cover-test",
+        "login-cookie-test",
+        "onboarding-page-test",
+        "login-page-test",
+        "page-lifecycle-test",
+        "fluent-ownership-test"
       ]
     },
     {
@@ -136,7 +142,13 @@
         "history-controller-test",
         "download-test",
         "download-page-test",
-        "local-player-test"
+        "local-player-test",
+        "download-cover-test",
+        "login-cookie-test",
+        "onboarding-page-test",
+        "login-page-test",
+        "page-lifecycle-test",
+        "fluent-ownership-test"
       ]
     },
     {
@@ -179,7 +191,13 @@
         "history-controller-test",
         "download-test",
         "download-page-test",
-        "local-player-test"
+        "local-player-test",
+        "download-cover-test",
+        "login-cookie-test",
+        "onboarding-page-test",
+        "login-page-test",
+        "page-lifecycle-test",
+        "fluent-ownership-test"
       ]
     }
   ],

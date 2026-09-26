@@ -67,6 +67,8 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationName("bbhouse-qt");
     QApplication::setApplicationVersion(QStringLiteral(BBHOUSE_APP_VERSION));
     QApplication app(argc, argv);
+    // Keep applicationName stable for existing data paths; brand uses the display name.
+    QApplication::setApplicationDisplayName(QStringLiteral("BBHouse"));
 #ifdef Q_OS_MACOS
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/bbhouse-icon-1024-mac.png")));
 #else

@@ -8,8 +8,18 @@ FluPage {
     id: page
     padding: 0
 
-    property string searchQuery: ""
-    property int pageIndex: 1
+    property string searchQuery: PopularController.searchText
+    property int pageIndex: PopularController.pageIndex
+    property bool stateReady: false
+    property bool restorePending: true
+    function restoreScroll() {
+        if (!stateReady || !restorePending || grid.height <= 0) return
+        grid.measureCards()
+        grid.forceLayout()
+        grid.contentY = grid.originY + Math.min(PopularController.scrollOffset,
+            Math.max(0, grid.contentHeight - grid.height))
+        restorePending = false
+    }
     property string pendingSeasonId: ""
     readonly property int pageSize: 30
     readonly property bool popular: PopularController.activeTab === "popular"
@@ -32,6 +42,12 @@ FluPage {
     function syncCards() {
         var entries = visibleItems
         var scrollY = grid.contentY
+        var layoutKey = selectionKey + ":" + pageIndex + ":" + searchQuery
+        var anchorIndex = Math.min(cardsModel.count - 1,
+            Math.max(0, Math.floor((scrollY - grid.originY) / grid.cellHeight)) * grid.columns)
+        var anchorKey = anchorIndex >= 0 ? cardsModel.get(anchorIndex).cardData.videoKey : ""
+        var rowFraction = (scrollY - grid.originY) / grid.cellHeight - Math.floor((scrollY - grid.originY) / grid.cellHeight)
+        var preserveAnchor = popular && !restorePending && grid.measuredSelectionKey === layoutKey
         for (var i = 0; i < entries.length; ++i) {
             var entry = entries[i]
             if (i < cardsModel.count && cardsModel.get(i).cardData.videoKey !== entry.videoKey)
@@ -41,15 +57,23 @@ FluPage {
                 cardsModel.setProperty(i, "cardData", entry)
         }
         if (cardsModel.count > entries.length) cardsModel.remove(entries.length, cardsModel.count - entries.length)
-        var layoutKey = selectionKey + ":" + pageIndex + ":" + searchQuery
         if (grid.measuredSelectionKey !== layoutKey) {
             grid.measuredSelectionKey = layoutKey
             grid.measuredCardHeight = 0
         }
         grid.forceLayout()
-        Qt.callLater(grid.measureCards)
+        grid.measureCards()
+        grid.forceLayout()
+        if (preserveAnchor && anchorKey) {
+            var nextIndex = 0
+            for (var j = 0; j < entries.length; ++j) {
+                if (entries[j].videoKey === anchorKey) { nextIndex = j; break }
+            }
+            scrollY = grid.originY + (Math.floor(nextIndex / grid.columns) + rowFraction) * grid.cellHeight
+        }
         grid.contentY = Math.max(grid.originY, Math.min(scrollY,
             grid.originY + Math.max(0, grid.contentHeight - grid.height)))
+        Qt.callLater(restoreScroll)
     }
     onVisibleItemsChanged: Qt.callLater(syncCards)
     readonly property var categories: [
@@ -67,16 +91,24 @@ FluPage {
 
     function selectPage(number) {
         pageIndex = Math.max(1, Math.min(number, totalPages))
+        PopularController.pageIndex = pageIndex
+        PopularController.scrollOffset = 0
+        restorePending = false
         pagination.pageCurrent = pageIndex
         grid.positionViewAtBeginning()
     }
-    onSearchQueryChanged: selectPage(1)
+    onSearchQueryChanged: {
+        if (!stateReady) return
+        PopularController.searchText = searchQuery
+        selectPage(1)
+    }
     onSelectionKeyChanged: {
+        if (!stateReady) return
         pendingSeasonId = ""
         selectPage(1)
     }
     onTotalPagesChanged: {
-        if (pageIndex > totalPages) selectPage(totalPages)
+        if (stateReady && pageIndex > totalPages) selectPage(totalPages)
     }
     onVisibleChanged: {
         if (!visible) pendingSeasonId = ""
@@ -261,6 +293,7 @@ FluPage {
             GridView {
                 id: grid
                 objectName: "popularGrid"
+                onHeightChanged: Qt.callLater(page.restoreScroll)
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -387,7 +420,8 @@ FluPage {
                 Layout.minimumWidth: implicitWidth
                 Layout.preferredWidth: implicitWidth
                 pageButtonCount: page.width < 800 ? 3 : 5
-                pageCurrent: 1
+                objectName: "popularPagination"
+                pageCurrent: page.pageIndex
                 itemCount: page.filteredItems.length
                 __itemPerPage: page.pageSize
                 onRequestPage: function(number, count) { page.selectPage(number) }
@@ -395,5 +429,14 @@ FluPage {
         }
     }
     CoverPreviewOverlay { id: coverPreview; anchors.fill: parent; z: 900 }
-    Component.onCompleted: PopularController.ensureLoaded()
+    Component.onCompleted: {
+        stateReady = true
+        if (pageIndex > totalPages) selectPage(totalPages)
+        syncCards()
+        PopularController.ensureLoaded()
+    }
+    Component.onDestruction: {
+        if (stateReady && !restorePending)
+            PopularController.scrollOffset = Math.max(0, grid.contentY - grid.originY)
+    }
 }

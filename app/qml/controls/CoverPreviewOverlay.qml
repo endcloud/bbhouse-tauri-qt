@@ -18,6 +18,18 @@ Item {
     property var sourceRect: null
 
     visible: false
+    onVisibleChanged: {
+        if (!visible) {
+            visible = false
+            zoom_in_anim.stop()
+            zoom_out_anim.stop()
+            // Hidden full-resolution previews must not pin decoded pixels/textures.
+            preview_image.source = ""
+            previewUrl = ""
+            sourceRect = null
+            preview_menu.close()
+        }
+    }
 
     function fitRect() {
         var margin = 24

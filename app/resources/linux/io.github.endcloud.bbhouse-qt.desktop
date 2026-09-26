@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=BBHouse
-Name[zh_CN]=BBHouse 哔哩哔哩播放器
+Name[zh_CN]=BBHouse
 Comment=Play Bilibili videos and local media
 Comment[zh_CN]=播放哔哩哔哩视频与本地媒体
 Exec=bbhouse-qt

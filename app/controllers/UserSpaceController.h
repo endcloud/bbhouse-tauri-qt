@@ -15,6 +15,7 @@ class UserSpaceController : public SpecialFollowController {
     Q_PROPERTY(QString profileError READ profileError NOTIFY profileChanged)
 public:
     explicit UserSpaceController(QObject *parent = nullptr);
+    Q_INVOKABLE void releasePageCache() override;
     QString profileMid() const { return QString::number(currentMid()); }
     QString profileName() const { return profile_.name; }
     QString profileFace() const { return profile_.faceUrl; }

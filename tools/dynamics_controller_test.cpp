@@ -93,6 +93,87 @@ public:
         controller.zoneTimer_.stop();
         check(model->rowCount() == 0 && controller.zoneNames().isEmpty() && emptyPublications == 1,
               "genuinely empty refresh clears cards and obsolete zones once");
+        controller.finishLoad(0, {video(100, 1)}, "next", true, {}, false);
+        controller.zoneTimer_.stop();
+        controller.setSearchText("fixture");
+        controller.setScrollOffset(480);
+        controller.scrollAnchor_ = {{"key", "100"}};
+        controller.releasePageCache();
+        check(controller.searchText().isEmpty() && controller.scrollOffset() == 0 &&
+                      controller.scrollAnchor_.isEmpty(),
+              "page release drops remembered search and scroll with the discarded feed");
+        controller.busy_ = true;
+        controller.finishLoad(0, {video(101, 2)}, "stale", true, {}, false);
+        check(controller.pool().isEmpty() && controller.items().isEmpty() && model->rowCount() == 0 &&
+              controller.zoneCache_.isEmpty() && !controller.zoneTimer_.isActive() && controller.busy(),
+              "page release frees cards and zone work; stale feed cannot refill cache or clear new busy");
+
+        // Real feed paging moves backward in publication time. Admission order must
+        // not depend on publication sort or a video's earlier representative.
+        DynamicsController capController;
+        capController.refreshPending_ = true;
+        qint64 nextAid = 1;
+        for (int round = 0; round < 35; ++round) {
+            QList<DynamicFeedItem> pageItems;
+            for (int i = 0; i < 60; ++i) {
+                const qint64 aid = nextAid++;
+                pageItems.append(video(aid, 1000000 - aid));
+            }
+            capController.finishLoad(0, pageItems, QString::number(round + 1), true, "", false);
+            capController.zoneTimer_.stop();
+        }
+        check(capController.pool_.size() == 2000 && capController.items_.size() == 2000,
+              "descending 35-page feed caps both pool and projection at 2000");
+        check(capController.pool_.first().toMap().value("aid").toLongLong() == 101 &&
+              capController.pool_.last().toMap().value("aid").toLongLong() == 2100,
+              "old admissions are evicted while the entire newly loaded page survives");
+        check(capController.offset_ == "35" && !capController.ended_,
+              "newly displayed page and continuation cursor progress together");
+        check(!capController.poolAids_.contains(1) && !capController.aidOccurrences_.contains(1) &&
+              !capController.pendingZoneAids_.contains(1),
+              "eviction releases dedup group and queued zone lookup");
+        capController.finishLoad(0, {video(101, 1), video(2101, 997899)}, "36", true, "", false);
+        capController.zoneTimer_.stop();
+        check(!capController.poolAids_.contains(101) && capController.poolAids_.contains(2101),
+              "moving an earlier representative to the tail does not renew admission priority");
+        capController.finishLoad(0, {video(2000, 1), video(2000, 2)}, "37", true, "", false);
+        capController.zoneTimer_.stop();
+        const auto grouped = capController.pool_[capController.findPoolIndexByAid(2000)].toMap();
+        check(capController.pool_.size() == 2000 && grouped.value("duplicateCount").toInt() == 3 &&
+              grouped.value("pubTs").toLongLong() == 1,
+              "surviving group retains all occurrence records and earliest representative");
+        capController.finishLoad(0, {video(1, 999999999)}, "38", true, "", false);
+        capController.zoneTimer_.stop();
+        check(capController.pool_.size() == 2000 && capController.poolAids_.contains(1) &&
+              capController.aidOccurrences_.value(1).size() == 1,
+              "evicted aid is readmitted as a fresh dedup group without stale occurrences");
+
+        DynamicsController posts;
+        posts.setCategoryFilter("post");
+        QList<DynamicFeedItem> postItems;
+        for (int i = 1; i <= 2001; ++i) {
+            DynamicFeedItem item;
+            item.category = DynamicCategory::Post;
+            item.id = QStringLiteral("post-%1").arg(i);
+            item.pubTs = 10000 - i;
+            postItems.append(item);
+        }
+        posts.finishLoad(0, postItems, "posts-2", true, "", false);
+        check(posts.pool_.size() == 2000 && !posts.poolIds_.contains("post-1") &&
+              posts.poolIds_.contains("post-2001"),
+              "non-video admission eviction also releases dynamic-id dedup keys");
+        posts.finishLoad(0, {postItems.first(), postItems.last()}, "posts-3", true, "", false);
+        check(posts.pool_.size() == 2000 && posts.poolIds_.contains("post-1") &&
+              !posts.poolIds_.contains("post-2"),
+              "evicted non-video id is readmitted while surviving duplicate stays unique");
+
+        double scrollChanges = 0;
+        QObject::connect(&capController, &DynamicsController::scrollOffsetChanged, [&] { ++scrollChanges; });
+        capController.setScrollOffset(84.0);
+        capController.setScrollOffset(84.0);
+        check(capController.scrollOffset() == 84.0 && scrollChanges == 1,
+              "scrollOffset stores the remembered position and dedups redundant writes");
+
         return failures ? 1 : 0;
     }
 };

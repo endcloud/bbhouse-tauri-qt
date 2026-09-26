@@ -20,6 +20,10 @@ void FluApp::init(QObject *launcher, QLocale locale) {
     this->launcher(launcher);
     _locale = std::move(locale);
     _engine = qmlEngine(launcher);
+    if (_translator) {
+        QGuiApplication::removeTranslator(_translator);
+        delete _translator;
+    }
     _translator = new QTranslator(this);
     QGuiApplication::installTranslator(_translator);
     const QStringList uiLanguages = _locale.uiLanguages();

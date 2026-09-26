@@ -236,6 +236,7 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 cache: true  // 固定尺寸 URL 可跨卡片及页面复用已加载图片
+                sourceSize: Qt.size(400, 225)  // Bound decoded local/original covers too.
                 source: card_root.thumbnailUrl
                 visible: card_root.coverUrl !== ""
             }

@@ -26,10 +26,16 @@ constexpr const char *kCoverUserAgent =
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 }  // namespace
 
+HistoryController::~HistoryController() {
+    cancelSync();
+    workerPool_.waitForDone();
+}
+
 HistoryController::HistoryController(QObject *parent)
     : QObject(parent), store_(AppPaths::dbPath()) {
+    workerPool_.setMaxThreadCount(2);
     // 启动即预热:后台线程初始化 SQLite(建表/迁移),UI 侧经 ready 呈现就绪态
-    QThreadPool::globalInstance()->start([this] {
+    workerPool_.start([this] {
         try {
             ensureStoreReady();
             QMetaObject::invokeMethod(this, [this] { emit readyChanged(); }, Qt::QueuedConnection);
@@ -55,11 +61,20 @@ int HistoryController::videoCount() const { return videoCount_; }
 
 int HistoryController::recordCount() const { return recordCount_; }
 
+void HistoryController::setSearchText(const QString &value) {
+    if (searchText_ == value) return;
+    searchText_ = value;
+    emit searchTextChanged();
+}
+
 void HistoryController::ensureStoreReady() {
-    std::call_once(storeInitFlag_, [this] {
-        store_.initialize();
-        storeReady_.store(true);
-    });
+    if (storeReady_.load()) return;
+    // MinGW 的 once_flag 异常重试在本机线程池上阻塞。用 RAII 锁保护
+    // 成功状态，失败时释放锁，后续 loadPage 可以重新初始化。
+    std::lock_guard<std::mutex> lock(storeInitMutex_);
+    if (storeReady_.load()) return;
+    store_.initialize();
+    storeReady_.store(true);
 }
 
 QVariantList HistoryController::toVariantList(const QList<HistoryItem> &items) {
@@ -102,11 +117,15 @@ QVariantList HistoryController::toVariantList(const QList<HistoryItem> &items) {
 
 void HistoryController::loadPage(int page) {
     if (page < 1) return;
+    if (lastRequestedPage_ != page) {
+        lastRequestedPage_ = page;
+        emit lastRequestedPageChanged();
+    }
     const quint64 generation = ++loadGeneration_;
     loading_ = true;
     loadError_.clear();
     emit loadingChanged();
-    QThreadPool::globalInstance()->start([this, page, generation] {
+    workerPool_.start([this, page, generation] {
         try {
             ensureStoreReady();
             const int total = store_.count();
@@ -146,7 +165,7 @@ void HistoryController::startSync() {
     emit syncingChanged(true);
     emit syncStatusChanged(syncStatus_);
 
-    QThreadPool::globalInstance()->start([this] {
+    workerPool_.start([this] {
         const auto progress = [this](const QString &text) {
             // Runner 在池线程回调,状态文案回投主线程
             QMetaObject::invokeMethod(
@@ -216,7 +235,7 @@ void HistoryController::coverDownload(const QString &url) {
         emit coverDownloadFinished(QString());
         return;
     }
-    QThreadPool::globalInstance()->start([this, trimmed] {
+    workerPool_.start([this, trimmed] {
         QString savedPath;
         // NAM 需运行中的事件循环:池线程内起 QEventLoop 等待 finished
         QNetworkAccessManager manager;

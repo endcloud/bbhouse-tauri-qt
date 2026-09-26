@@ -52,10 +52,25 @@ AppPreferences *AppPreferences::instance() {
 }
 
 AppPreferences::AppPreferences(QObject *parent)
-    : QObject(parent), d(new Private) {
+    : QObject(parent), d(std::make_unique<Private>()) {
     // IniFormat 明确落盘位置,避免 Windows 注册表散落
     d->settings = std::make_unique<QSettings>(QSettings::IniFormat, QSettings::UserScope, "shizi",
                                               "bbhouse-qt");
+}
+
+AppPreferences::~AppPreferences() = default;
+
+int AppPreferences::pageCacheMinutes() const {
+    const int minutes = savedInt(d->settings->value("App.Memory.PageCacheMinutes", 5), 5, 1, 30);
+    return minutes == 1 || minutes == 5 || minutes == 10 || minutes == 30 ? minutes : 5;
+}
+
+void AppPreferences::setPageCacheMinutes(int value) {
+    if (value != 1 && value != 5 && value != 10 && value != 30) return;
+    if (pageCacheMinutes() == value) return;
+    d->settings->setValue("App.Memory.PageCacheMinutes", value);
+    d->settings->sync();
+    emit pageCacheMinutesChanged();
 }
 
 QString AppPreferences::language() const {
@@ -224,6 +239,11 @@ QVariant AppPreferences::value(const QString &key, const QVariant &fallback) con
 }
 
 void AppPreferences::setValue(const QString &key, const QVariant &value) {
+    if (key == "App.Memory.PageCacheMinutes") {
+        setPageCacheMinutes(savedInt(value, -1, 1, 30));
+        return;
+    }
+
     // Proxy changes must go through the atomic validator, never the generic QML API.
     if (key.startsWith("App.Network.RegionalProxy")) return;
     if (key == "App.Player.DanmakuImplementation") {

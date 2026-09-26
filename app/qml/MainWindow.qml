@@ -7,7 +7,7 @@ import bbhouse
 
 // 主窗口导航外壳(app-navigation-shell):FluWindow 自定义标题栏(48px)+
 // FluNavigationView 左窄轨(默认折叠)+ 标题栏居中搜索框(仅卡片页)+
-// 页面路由(Loader 缓存宿主,等价 NavigationCache:首访创建、切走保留、重选不重建)。
+// 页面路由(首访创建、后台限时保留、重选不重建;轻量导航状态由控制器/窗口持有)。
 FluWindow {
     id: window
 
@@ -16,16 +16,18 @@ FluWindow {
     minimumWidth: 880
     minimumHeight: 560
     launchMode: FluWindowType.SingleTask
-    title: qsTr("B站历史记录")
+    title: qsTr("BBHouse")
 
     // 当前页 key:页面宿主切换 + 搜索框可见性条件
-    property string currentPage: "dynamics"
+    property string currentPage: ""
     readonly property var pageKeys: ["dynamics", "special", "watchlater", "bangumi", "live", "online", "local", "settings", "popular", "downloads", "about"]
     // 标题栏搜索框只在卡片页呈现(动态/特别关注/稍后再看/番剧/在线历史/本地历史;
     // 特别关注三档均支持标题/UP 名称的当前页投影,special-follow-ui 搜索契约)
     readonly property var cardPages: ["dynamics", "special", "watchlater", "bangumi", "live", "online", "local", "popular", "downloads"]
     property bool spaceVisible: false
-    property bool spaceVisited: false
+    // 只保留标量状态，不持有已卸载页面或卡片树。
+    QtObject { id: downloads_state; property var value: ({}) }
+    QtObject { id: about_state; property var value: ({}) }
     readonly property bool searchVisible: spaceVisible || cardPages.indexOf(currentPage) !== -1
     readonly property var activeSearchPage: {
         if (spaceVisible) return space_loader.item
@@ -40,8 +42,8 @@ FluWindow {
         editor.focus = false
     }
 
-    // 页面缓存:首访才创建,此后常驻(本地历史页码/同步状态跨页保持)
-    property var visitedPages: []
+    // 页面只在访问后创建；后台超时同时释放视图和可重建的浏览缓存。
+    readonly property int pageRetentionMs: AppPreferences.pageCacheMinutes * 60 * 1000
 
     // 窗格折叠仅由汉堡按钮触发(窗口尺寸变化不改变折叠态,规约口径);
     // Compact=仅图标窄轨(50px),Open=图标+文字展开态(FluNavigationViewType)
@@ -51,11 +53,10 @@ FluWindow {
         if (pageKeys.indexOf(key) === -1) return
         // 先提交旧页再切换绑定，避免失焦信号晚到时把旧文字写进新页。
         finishSearch()
-        if (visitedPages.indexOf(key) === -1) {
-            visitedPages = visitedPages.concat(key)
-        }
-        spaceVisible = false
+        // Choose the destination while the space still covers the host; do not
+        // briefly recreate an expired previous page when leaving the space.
         currentPage = key
+        spaceVisible = false
     }
 
     function openUserSpace(mid, name, faceUrl) {
@@ -65,7 +66,6 @@ FluWindow {
         if (spaceVisible && UserSpaceController.profileMid === String(mid)) return
         var changed = UserSpaceController.profileMid !== String(mid)
         UserSpaceController.openSpace(mid, name, faceUrl)
-        spaceVisited = true
         if (changed && space_loader.item) space_loader.item.resetView()
         spaceVisible = true
     }
@@ -86,7 +86,7 @@ FluWindow {
         target: LoginController
         function onAuthenticated() {
             // A re-login must retry a feed that previously failed authorization.
-            var feedAlreadyVisited = window.visitedPages.indexOf("dynamics") !== -1
+            var feedAlreadyVisited = page_host.children[0].active
             window.visitPage("dynamics")
             nav_view.setCurrentIndex(0)
             if (feedAlreadyVisited) DynamicsController.refresh()
@@ -311,51 +311,70 @@ FluWindow {
         visible: !window.spaceVisible
         currentIndex: window.pageKeys.indexOf(window.currentPage)
 
-        Loader {
-            active: window.visitedPages.indexOf("dynamics") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "dynamics" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: DynamicsController.releasePageCache()
             sourceComponent: DynamicsPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("special") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "special" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: SpecialFollowController.releasePageCache()
             sourceComponent: SpecialFollowPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("watchlater") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "watchlater" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: WatchlaterController.releasePageCache()
             sourceComponent: WatchlaterPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("bangumi") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "bangumi" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: BangumiController.releasePageCache()
             sourceComponent: BangumiPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("live") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "live" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: LiveController.releasePageCache()
             sourceComponent: LivePage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("online") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "online" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: OnlineHistoryController.releasePageCache()
             sourceComponent: OnlineHistoryPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("local") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "local" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
             sourceComponent: LocalHistoryPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("settings") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "settings" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
             sourceComponent: SettingsPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("popular") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "popular" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            onExpired: PopularController.releasePageCache()
             sourceComponent: PopularPage {}
         }
-        Loader {
-            active: window.visitedPages.indexOf("downloads") !== -1
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "downloads" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
             sourceComponent: DownloadsPage {
-                Component.onCompleted: if (LoginController.needsLogin) showingLibrary = true
+                navigationState: downloads_state
+                initialShowingLibrary: LoginController.needsLogin
             }
         }
-        Loader {
-            active: window.visitedPages.indexOf("about") !== -1
-            sourceComponent: AboutPage {}
+        ExpiringPageLoader {
+            pageActive: window.currentPage === "about" && !window.spaceVisible
+            retentionMs: window.pageRetentionMs
+            sourceComponent: AboutPage { navigationState: about_state }
         }
     }
 
@@ -368,10 +387,12 @@ FluWindow {
         }
     }
 
-    Loader {
+    ExpiringPageLoader {
         id: space_loader
         anchors.fill: page_host
-        active: window.spaceVisited
+        pageActive: window.spaceVisible
+        retentionMs: window.pageRetentionMs
+        onExpired: UserSpaceController.releasePageCache()
         visible: window.spaceVisible
         sourceComponent: UserSpacePage {
             onBackRequested: window.returnFromSpace()
@@ -401,7 +422,6 @@ FluWindow {
         for (var i = 0; i < names.length; i++) {
             if (names[i].trim() === "UserSpacePage.qml") {
                 // No account/network fixture is needed to validate page construction.
-                spaceVisited = true
                 spaceVisible = true
                 continue
             }

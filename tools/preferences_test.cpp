@@ -80,6 +80,19 @@ int main(int argc, char **argv) {
                    {"host", "http://not-a-bare-host/path"}, {"port", 70000}});
     saved.sync();
     auto *prefs = AppPreferences::instance();
+    check(prefs->pageCacheMinutes() == 5, "background pages default to five minutes");
+    prefs->setPageCacheMinutes(1);
+    check(prefs->pageCacheMinutes() == 1, "page retention can be shortened");
+    prefs->setPageCacheMinutes(0);
+    prefs->setValue("App.Memory.PageCacheMinutes", 2);
+    check(prefs->pageCacheMinutes() == 1, "invalid page retention is ignored");
+    prefs->setValue("App.Memory.PageCacheMinutes", 30);
+    saved.sync();
+    check(prefs->pageCacheMinutes() == 30 && saved.value("App.Memory.PageCacheMinutes").toInt() == 30,
+          "page retention persists through typed and generic APIs");
+    saved.setValue("App.Memory.PageCacheMinutes", "invalid");
+    saved.sync();
+    check(prefs->pageCacheMinutes() == 5, "invalid persisted retention falls back safely");
     int implementation = 0, enabled = 0, opacity = 0, fontSize = 0, area = 0, density = 0, merge = 0;
     auto persisted = [&] {
         QProcess child;
@@ -176,6 +189,8 @@ int main(int argc, char **argv) {
     QFile ini(saved.fileName());
     check(ini.open(QIODevice::ReadOnly) && !ini.readAll().contains("fixture-password"),
           "proxy password is never written to preferences file");
+    // Windows cannot atomically replace an INI that this fixture still holds open.
+    ini.close();
     check(prefs->saveProxySettings("socks5", "127.0.0.1", 1080, "fixture-user", "fixture-password")
               && proxyChanges == 1, "identical proxy save does not notify twice");
     const QString beforeProxy = proxySnapshot(prefs);

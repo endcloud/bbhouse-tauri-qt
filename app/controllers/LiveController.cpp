@@ -21,6 +21,18 @@ struct FetchResult {
 
 LiveController::LiveController(QObject *parent) : QObject(parent) {}
 
+void LiveController::setSearchText(const QString &value) {
+    if (searchText_ == value) return;
+    searchText_ = value;
+    emit searchTextChanged();
+}
+
+void LiveController::setScrollOffset(double value) {
+    if (qAbs(scrollOffset_ - value) < 0.5) return;  // 去抖:0.5px 内视为不变
+    scrollOffset_ = value;
+    emit scrollOffsetChanged();
+}
+
 void LiveController::ensureLoaded() {
     if (!loaded_ && !busy_) beginFetch(true);
 }
@@ -152,4 +164,30 @@ QVariantMap LiveController::toItemMap(const LiveRoom &room) {
     return {{"roomId", room.roomId}, {"mid", room.mid}, {"title", room.title},
             {"uname", room.uname}, {"face", room.face}, {"cover", room.cover},
             {"area", room.area}, {"online", room.online}};
+}
+
+void LiveController::releasePageCache() {
+    ++generation_;
+    pool_ = {};
+    error_.clear();
+    requestCookie_.clear();
+    cookieCaptured_ = false;
+    busy_ = false;
+    loaded_ = false;
+    hasMore_ = true;
+    unauthorized_ = false;
+    replace_ = false;
+    nextPage_ = 1;
+    pendingPage_ = 1;
+    scannedPages_ = 0;
+    searchText_.clear();
+    scrollOffset_ = 0;
+    emit poolChanged();
+    emit searchTextChanged();
+    emit scrollOffsetChanged();
+    emit errorChanged();
+    emit busyChanged();
+    emit loadedChanged();
+    emit hasMoreChanged();
+    emit unauthorizedChanged();
 }

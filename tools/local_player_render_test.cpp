@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
@@ -129,9 +130,10 @@ int runLocalPlayerRenderTest(int argc, char **argv) {
     check(player.loading() && !item->renderReady() && client->getPropertyString("path").isEmpty() && error.isEmpty(),
           "stale renderer-ready and error notifications cannot start a reopened kernel");
     item->setParentItem(window.contentItem());
+    item->setVisible(true);
     check(until([&] {
               return !player.loading() && redFrame() &&
-                  client->getPropertyString("path") == secondPath;
+                  QFileInfo(client->getPropertyString("path")).canonicalFilePath() == QFileInfo(secondPath).canonicalFilePath();
           }) && error.isEmpty(), "rapid switch before mount loads and renders only the latest local video");
     player.closeRequested();
     draw();

@@ -138,9 +138,14 @@ quint32 QHotkeyPrivateMac::nativeKeycode(Qt::Key keycode, bool &ok)
 
 	if (currentKeyboard == NULL)
 		return 0;
+	// The layout returned by TISGetInputSourceProperty is borrowed from this
+	// input source. Keep its owner alive until every table lookup has finished.
+	struct InputSourceScope {
+		TISInputSourceRef source;
+		~InputSourceScope() { CFRelease(source); }
+	} inputSourceScope{currentKeyboard};
 
 	currentLayoutData = (CFDataRef)TISGetInputSourceProperty(currentKeyboard, kTISPropertyUnicodeKeyLayoutData);
-	CFRelease(currentKeyboard);
 	if (currentLayoutData == NULL)
 		return 0;
 

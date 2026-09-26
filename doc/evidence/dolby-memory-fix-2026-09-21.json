@@ -1,0 +1,419 @@
+{
+  "date": "2026-09-21",
+  "bvid": "BV1omoHYzEST",
+  "scope": "Explicit user sample, only first 64 MiB of qn80/qn126 representations, local offscreen playback; no QML/danmaku/audio/network cache/heartbeats/history writes",
+  "memory_units": {
+    "private_mib": "PrivateUsage: private commit, not Task Manager active private working set",
+    "working_set_mib": "WorkingSetSize: whole working set",
+    "gpu_memory": "not measured separately"
+  },
+  "fixture": [
+    {
+      "quality": 80,
+      "prefix_only": true,
+      "bytes": 67108864,
+      "sha256": "c707982ab62a9a37344e6ad099ac2e0394deece6d6601eab928e01e3d7dd91cb"
+    },
+    {
+      "quality": 126,
+      "prefix_only": true,
+      "bytes": 67108864,
+      "sha256": "d286c26567d32dde476d9563e46981c7237950525e3f59d2b3bf0762a0d55fde"
+    }
+  ],
+  "dolby_metadata": {
+    "codec": "hevc",
+    "profile": "Main 10",
+    "width": 3840,
+    "height": 2160,
+    "pixel_format": "yuv420p10le",
+    "color_primaries": "bt2020",
+    "base_layer_transfer": "arib-std-b67",
+    "dv_profile": 8,
+    "dv_level": 7,
+    "rpu_present": true,
+    "enhancement_layer_present": false,
+    "base_layer_compatibility_id": 4
+  },
+  "experiments": [
+    {
+      "after_gl": {
+        "private_mib": 74.80078125,
+        "working_set_mib": 65.5859375
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 224.453125,
+        "working_set_mib": 253.1328125
+      },
+      "after_stop_render_context_alive": {
+        "private_mib": 239.078125,
+        "working_set_mib": 267.19140625
+      },
+      "baseline": {
+        "private_mib": 21.72265625,
+        "working_set_mib": 29.953125
+      },
+      "direct_render_option": "auto",
+      "dscale_option": "hermite",
+      "extra_frames_option": "auto",
+      "fbo_format_option": "auto",
+      "gl_renderer": "Intel(R) Arc(TM) 140T GPU (16GB)",
+      "gl_version": "3.2.0 - Build 32.0.101.8861",
+      "hwdec_option": "auto-safe",
+      "initialized": {
+        "private_mib": 84.40625,
+        "working_set_mib": 86.20703125
+      },
+      "mode": "native-offscreen-opengl",
+      "output_height": 1080,
+      "output_width": 1920,
+      "scale_option": "lanczos",
+      "threads_option": "0",
+      "name": "dolby-switch",
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "29.970030",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "1080",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "nv12",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "1920"
+          },
+          "peak_private_mib": 315.4765625,
+          "last_private_mib": 313.13671875,
+          "peak_working_set_mib": 327.9375,
+          "last_playback_time": "19.786000",
+          "sample_count": 170,
+          "duration_ms": 19946
+        },
+        {
+          "phase": 2,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "29.970000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "53",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "pq",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.2020",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1733.5,
+          "last_private_mib": 1679.2265625,
+          "peak_working_set_mib": 1738.15625,
+          "last_playback_time": "19.219219",
+          "sample_count": 135,
+          "duration_ms": 19964
+        },
+        {
+          "phase": 3,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "29.970030",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "1080",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "nv12",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "1920"
+          },
+          "peak_private_mib": 876.65234375,
+          "last_private_mib": 313.41015625,
+          "peak_working_set_mib": 896.859375,
+          "last_playback_time": "19.419000",
+          "sample_count": 167,
+          "duration_ms": 19985
+        }
+      ]
+    },
+    {
+      "after_gl": {
+        "private_mib": 74.4921875,
+        "working_set_mib": 68.1171875
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 648.9140625,
+        "working_set_mib": 668.4921875
+      },
+      "after_stop_render_context_alive": {
+        "private_mib": 708.65234375,
+        "working_set_mib": 727.12890625
+      },
+      "baseline": {
+        "private_mib": 21.75,
+        "working_set_mib": 28.65234375
+      },
+      "direct_render_option": "auto",
+      "dscale_option": "hermite",
+      "extra_frames_option": "auto",
+      "fbo_format_option": "auto",
+      "gl_renderer": "Intel(R) Arc(TM) 140T GPU (16GB)",
+      "gl_version": "3.2.0 - Build 32.0.101.8861",
+      "hw_threads_option": "4",
+      "hwdec_option": "auto-safe",
+      "initialized": {
+        "private_mib": 85.16796875,
+        "working_set_mib": 85.03125
+      },
+      "mode": "native-offscreen-opengl",
+      "output_height": 1080,
+      "output_width": 1920,
+      "scale_option": "lanczos",
+      "threads_option": "0",
+      "name": "dolby-hwthreads4",
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "29.970000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "43",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/hwdec-threads": "4",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-dec-params/gamma": "pq",
+            "video-dec-params/pixelformat": "p010",
+            "video-dec-params/primaries": "bt.2020",
+            "video-params/colormatrix": "dolbyvision",
+            "video-params/dolby-vision-profile": "",
+            "video-params/gamma": "pq",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.2020",
+            "video-params/sig-peak": "4.929080",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1691.5078125,
+          "last_private_mib": 1680.74609375,
+          "peak_working_set_mib": 1691.66796875,
+          "last_playback_time": "14.447781",
+          "sample_count": 102,
+          "duration_ms": 14940
+        }
+      ]
+    },
+    {
+      "after_gl": {
+        "private_mib": 73.9453125,
+        "working_set_mib": 64.0859375
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 620.36328125,
+        "working_set_mib": 639.8828125
+      },
+      "after_stop_render_context_alive": {
+        "private_mib": 652.12109375,
+        "working_set_mib": 671.26953125
+      },
+      "baseline": {
+        "private_mib": 21.74609375,
+        "working_set_mib": 28.82421875
+      },
+      "direct_render_option": "auto",
+      "dscale_option": "hermite",
+      "extra_frames_option": "auto",
+      "fbo_format_option": "auto",
+      "gl_renderer": "Intel(R) Arc(TM) 140T GPU (16GB)",
+      "gl_version": "3.2.0 - Build 32.0.101.8861",
+      "hw_threads_option": "2",
+      "hwdec_option": "auto-safe",
+      "initialized": {
+        "private_mib": 84.58203125,
+        "working_set_mib": 84.87109375
+      },
+      "mode": "native-offscreen-opengl",
+      "output_height": 1080,
+      "output_width": 1920,
+      "scale_option": "lanczos",
+      "threads_option": "0",
+      "name": "dolby-hwthreads2",
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "29.970000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "36",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/hwdec-threads": "2",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-dec-params/gamma": "pq",
+            "video-dec-params/pixelformat": "p010",
+            "video-dec-params/primaries": "bt.2020",
+            "video-params/colormatrix": "dolbyvision",
+            "video-params/dolby-vision-profile": "",
+            "video-params/gamma": "pq",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.2020",
+            "video-params/sig-peak": "4.929080",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1591.73046875,
+          "last_private_mib": 1564.1640625,
+          "peak_working_set_mib": 1577.16796875,
+          "last_playback_time": "14.647981",
+          "sample_count": 105,
+          "duration_ms": 14955
+        }
+      ]
+    },
+    {
+      "after_gl": {
+        "private_mib": 75.23828125,
+        "working_set_mib": 64.38671875
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 582.9765625,
+        "working_set_mib": 603.01171875
+      },
+      "after_stop_render_context_alive": {
+        "private_mib": 616.58203125,
+        "working_set_mib": 633.57421875
+      },
+      "baseline": {
+        "private_mib": 21.734375,
+        "working_set_mib": 28.64453125
+      },
+      "direct_render_option": "auto",
+      "dscale_option": "hermite",
+      "extra_frames_option": "auto",
+      "fbo_format_option": "auto",
+      "gl_renderer": "Intel(R) Arc(TM) 140T GPU (16GB)",
+      "gl_version": "3.2.0 - Build 32.0.101.8861",
+      "hw_threads_option": "1",
+      "hwdec_option": "auto-safe",
+      "initialized": {
+        "private_mib": 84.984375,
+        "working_set_mib": 85.2109375
+      },
+      "mode": "native-offscreen-opengl",
+      "output_height": 1080,
+      "output_width": 1920,
+      "scale_option": "lanczos",
+      "threads_option": "0",
+      "name": "dolby-hwthreads1",
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "29.970000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "28",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/hwdec-threads": "1",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-dec-params/gamma": "pq",
+            "video-dec-params/pixelformat": "p010",
+            "video-dec-params/primaries": "bt.2020",
+            "video-params/colormatrix": "dolbyvision",
+            "video-params/dolby-vision-profile": "",
+            "video-params/gamma": "pq",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.2020",
+            "video-params/sig-peak": "4.929080",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1538.2421875,
+          "last_private_mib": 1510.77734375,
+          "peak_working_set_mib": 1524.09765625,
+          "last_playback_time": "14.781448",
+          "sample_count": 107,
+          "duration_ms": 15077
+        }
+      ]
+    }
+  ],
+  "native_d3d11_comparison": {
+    "mode": "hidden-native-d3d11-vo-gpu",
+    "hw_threads_option": 4,
+    "output_width": 1920,
+    "output_height": 1080,
+    "properties": {
+      "hwdec-current": "d3d11va",
+      "current-vo": "gpu",
+      "video-params/pixelformat": "d3d11",
+      "video-params/gamma": "pq",
+      "video-dec-params/pixelformat": "d3d11",
+      "frame-drop-count": "0",
+      "decoder-frame-drop-count": "0",
+      "time-pos": "19.652986"
+    },
+    "peak_private_mib": 1209.83,
+    "last_private_mib": 1183.35,
+    "peak_working_set_mib": 1182.1,
+    "sample_count": 200,
+    "duration_ms": 19985
+  }
+}

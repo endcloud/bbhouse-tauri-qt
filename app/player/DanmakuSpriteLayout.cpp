@@ -240,6 +240,13 @@ void DanmakuSpriteLayout::load(const QVariantList &entries) {
     std::stable_sort(d->entries.begin(), d->entries.end(),
         [](const Private::Entry &a, const Private::Entry &b) { return a.time < b.time; });
     reset(d->time);
+    if (entries.isEmpty()) {
+        // An empty load marks a closed video or renderer switch, unlike seek.
+        // The persistent engine must not retain the previous video's rasters.
+        d->cache.clear();
+        d->bytes = 0;
+        d->entries.squeeze();
+    }
 }
 
 void DanmakuSpriteLayout::configure(QSizeF viewport, int pixels, int speedPercent,

@@ -38,6 +38,9 @@ constexpr int kCandidateTimeoutMs = 8000;   // 单候选 8s 未 file-loaded 换�
 
 PlayerController::PlayerController(QObject *parent)
     : QObject(parent), store_(AppPaths::dbPath()) {
+    workerPool_.setMaxThreadCount(4);
+    onlineDanmaku_.loaded = [this](QVariantList entries) { emit danmakuLoaded(entries); };
+    onlineDanmaku_.failed = [this](QString message) { emit danmakuLoadFailed(message); };
     screenshotPool_.setMaxThreadCount(1);
     localMediaPool_.setMaxThreadCount(1);
     subtitlePool_.setMaxThreadCount(2);
@@ -150,7 +153,7 @@ PlayerController::PlayerController(QObject *parent)
             const QString key = currentKey_;
             const double p = position_;
             const double d = duration_;
-            QThreadPool::globalInstance()->start([this, key, p, d] {
+            workerPool_.start([this, key, p, d] {
                 ensureStoreReady();
                 store_.savePlaybackPosition(key, p, d);
             });
@@ -168,6 +171,10 @@ PlayerController::PlayerController(QObject *parent)
 }
 
 PlayerController::~PlayerController() {
+    pollTimer_.stop();
+    candidateWatchdog_.stop();
+    mediaTimer_.stop();
+    workerPool_.waitForDone();
     localMediaPool_.waitForDone();
     subtitlePool_.waitForDone();
     delete systemMedia_;
@@ -445,7 +452,10 @@ double PlayerController::computeStartSeconds(const ResolveRequest &request) {
 void PlayerController::startPlayback(const QVariantMap &entry, double explicitStart,
                                      bool qualitySwitch) {
     generation_++;
-    if (!qualitySwitch) resetSubtitles();
+    if (!qualitySwitch) {
+        resetSubtitles();
+        onlineDanmaku_.reset();
+    }
     waitingRenderReady_ = false;
     waitingFileLoaded_ = false;
     candidateWatchdog_.stop();
@@ -472,7 +482,7 @@ void PlayerController::startPlayback(const QVariantMap &entry, double explicitSt
         startLocalPlayback(request);
         return;
     }
-    QThreadPool::globalInstance()->start([this, request] { resolveEntry(request); });
+    workerPool_.start([this, request] { resolveEntry(request); });
 }
 
 void PlayerController::startLocalPlayback(const ResolveRequest &request) {
@@ -946,7 +956,7 @@ bool PlayerController::ensureKernel() {
         sessionPositions_.remove(key);
         endedAwaitingSwitch_ = true;
         if (!localMedia() && !key.isEmpty()) {
-            QThreadPool::globalInstance()->start([this, key, dur] {
+            workerPool_.start([this, key, dur] {
                 ensureStoreReady();
                 store_.savePlaybackPosition(key, 0, dur);
             });
@@ -1108,7 +1118,7 @@ void PlayerController::tryNextVideoCandidate() {
 void PlayerController::startDurlFallback() {
     if (localMedia()) return;
     const ResolveRequest request = activeRequest_;
-    QThreadPool::globalInstance()->start([this, request] {
+    workerPool_.start([this, request] {
         const QString business = request.entry.value("business").toString();
         std::unique_ptr<BilibiliApiClient> regionalClient;
         if (business == QLatin1String("pgc") && request.entry.value("regionalApiProxy").toBool())
@@ -1226,45 +1236,7 @@ void PlayerController::handleResolveFailed(const ResolveRequest &request,
 }
 
 void PlayerController::loadDanmaku(qint64 cid, const QString &cookie) {
-    // 无 cid(动态番剧 season 换算失败等):静默跳过,不报阻断错误
-    if (cid <= 0) return;
-    const int generation = generation_;
-    QThreadPool::globalInstance()->start([this, cid, generation, cookie] {
-        try {
-            const QString xml =
-                    PlayerApi::getDanmakuXml(*BilibiliApiClient::instance(), cid, cookie);
-            const QList<DanmakuParser::DanmakuEntry> parsed = DanmakuParser::parseXml(xml);
-            QVariantList entries;
-            entries.reserve(parsed.size());
-            for (const DanmakuParser::DanmakuEntry &entry : parsed) {
-                QVariantMap map;
-                map.insert("time", entry.time);
-                map.insert("type", entry.type);
-                map.insert("fontSize", entry.fontSize);
-                map.insert("fontColor", entry.fontColor);
-                map.insert("level", entry.level);
-                map.insert("message", entry.message);
-                entries.append(map);
-            }
-            QMetaObject::invokeMethod(
-                    this,
-                    [this, generation, entries]() {
-                        if (generation != generation_) return;  // 已被切播取代
-                        emit danmakuLoaded(entries);
-                    },
-                    Qt::QueuedConnection);
-        } catch (const std::exception &e) {
-            // 弹幕故障降级:提示但不阻塞播放
-            const QString message = QString::fromUtf8(e.what());
-            QMetaObject::invokeMethod(
-                    this,
-                    [this, generation, message]() {
-                        if (generation != generation_) return;
-                        emit danmakuLoadFailed(message);
-                    },
-                    Qt::QueuedConnection);
-        }
-    });
+    onlineDanmaku_.request(cid, cookie);
 }
 
 void PlayerController::flushPosition() {
@@ -1277,7 +1249,7 @@ void PlayerController::flushPosition() {
     if (hasSession) sessionPositions_.insert(key, pos);
     const double dur = duration_;
     if (hasSession && pos > 0 && dur > 0 && !endedAwaitingSwitch_) {
-        QThreadPool::globalInstance()->start([this, key, pos, dur] {
+        workerPool_.start([this, key, pos, dur] {
             ensureStoreReady();
             store_.savePlaybackPosition(key, pos, dur);
         });
@@ -1298,7 +1270,7 @@ void PlayerController::reportHeartbeat(const QVariantMap &entry, double position
     report.cid = cid;
     report.playedSeconds = position;
     report.action = action;
-    QThreadPool::globalInstance()->start([this, report] {
+    QThreadPool::globalInstance()->start([report] {
         try {
             const QString cookie = BilibiliApiClient::readCookieFromFile(AppPaths::cookiePath());
             HeartbeatApi::report(*BilibiliApiClient::instance(), cookie, report);
@@ -1372,6 +1344,7 @@ void PlayerController::removeAt(int index) {
         syncSystemMedia();
         generation_++;
         resetSubtitles();
+        onlineDanmaku_.reset();
         waitingFileLoaded_ = false;
         candidateWatchdog_.stop();
         // 权益拒播等场景:停留无源状态,不自动续播下一项
@@ -1549,6 +1522,7 @@ void PlayerController::closeRequested() {
     // 停止必须先于重量级资源释放,窗口随 FluRouter 立即从屏幕消失。
     generation_++;  // 挂起的解析/弹幕结果作废
     resetSubtitles();
+    onlineDanmaku_.reset();
     qualityResolving_ = false;
     pollTimer_.stop();
     candidateWatchdog_.stop();
@@ -1558,9 +1532,16 @@ void PlayerController::closeRequested() {
         client_->setPaused(true);
         client_->stop();
     }
+    activeRequest_ = {};
+    pendingVideoUrls_.clear();
+    pendingAudioUrls_.clear();
+    qualities_.clear();
+    qualityLabel_.clear();
+    emit qualitiesChanged();
     // 会话播放列表为会话内存态:窗口关闭即释放(已落盘位置跨会话生效)
     sessionPositions_.clear();
     list_.clear();
+    list_.squeeze();
     currentIndex_ = -1;
     currentKey_.clear();
     currentTitle_.clear();

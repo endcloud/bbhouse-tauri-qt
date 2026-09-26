@@ -184,6 +184,53 @@ public:
         check(!bounded.busy() && !bounded.loaded() && !bounded.error().isEmpty() &&
               bounded.requests.size() == PopularController::kMaxPagesPerOperation,
               "endless empty popular pages terminate with explicit retryable error");
+        weekly.refresh();
+        const auto beforeRelease = weekly.requests.last();
+        weekly.setSearchText("fixture");
+        weekly.setScrollOffset(320);
+        weekly.setPageIndex(4);
+        weekly.releasePageCache();
+        check(weekly.searchText().isEmpty() && weekly.scrollOffset() == 0 && weekly.pageIndex() == 1,
+              "page release returns remembered popular navigation to the first screen");
+        weekly.ensureLoaded();
+        weekly.finishFetch(beforeRelease.generation, beforeRelease.key, beforeRelease.page,
+                           {{item("expired")}, false, {}}, {});
+        check(weekly.pool().isEmpty() && weekly.weeklyPeriods().isEmpty() && weekly.periodsBusy(),
+              "released weekly page drops all snapshots and rejects old response while refetching directory");
+        FakeController boundedCache;
+        for (int rid = 0; rid < 30; ++rid) {
+            boundedCache.selectRanking(rid);
+            finish(boundedCache, {{item(QString::number(rid))}, false, {}});
+        }
+        check(boundedCache.cache_.size() <= 12 && firstId(boundedCache) == "29",
+              "ranking cache retains at most twelve recent selections");
+
+        FakeController poolLimit;
+        poolLimit.ensureLoaded();
+        QVariantList bulkItems;
+        for (int i = 0; i < 2100; ++i) bulkItems.append(item(QString::number(i)));
+        finish(poolLimit, {bulkItems, true, {}});
+        check(poolLimit.pool().size() == PopularController::kMaxPoolSize &&
+              firstId(poolLimit) == QString::number(2100 - PopularController::kMaxPoolSize),
+              "pool over max size discards oldest items and retains latest additions");
+        const int oldPoolSize = poolLimit.pool().size();
+        poolLimit.loadMore();
+        finish(poolLimit, {{item("2100"), item("2101")}, true, {}});
+        check(poolLimit.pool().size() == PopularController::kMaxPoolSize &&
+              firstId(poolLimit) == QString::number(2100 - PopularController::kMaxPoolSize + 2) &&
+              poolLimit.pool().last().toMap().value("videoKey").toString() == "2101",
+              "continuation beyond max size maintains cap while sliding window forward");
+        poolLimit.refresh();
+        finish(poolLimit, {{item("new1"), item("new2")}, true, {}});
+        check(poolLimit.pool().size() == 2 && firstId(poolLimit) == "new1",
+              "refresh resets pool regardless of previous size");
+
+        FakeController completeList;
+        completeList.selectTab("precious");
+        finish(completeList, {bulkItems, false, {}});
+        check(completeList.pool().size() == 2100 && firstId(completeList) == "0",
+              "complete non-popular lists retain all items for local pagination");
+
         return failures ? 1 : 0;
     }
 };

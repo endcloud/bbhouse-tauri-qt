@@ -29,6 +29,7 @@ struct DetailResult { QVariantMap detail; QString error; };
 BangumiController::BangumiController(QObject *parent) : QObject(parent) {
     connect(AppPreferences::instance(), &AppPreferences::proxySettingsChanged, this, [this] {
         seasonCache_.clear();
+        seasonCacheUse_.clear();
         // 配置变更后，已经排队/在途的地区详情只能用新快照重新获取。
         if (seasonBusy_ && latestSeason_.regional) {
             latestSeason_.generation = ++seasonGeneration_;
@@ -81,9 +82,16 @@ void BangumiController::ensureCurrentBucketLoaded() {
     startFetch(currentBucket_, 1);
 }
 
+void BangumiController::setCurrentTab(const QString &tab) {
+    if (currentTab_ == tab) return;
+    currentTab_ = tab;
+    emit currentTabChanged();
+}
+
 void BangumiController::setRegionalSearch(const QString &query) {
     if (regionalSearch_ == query) return;
     regionalSearch_ = query;
+    emit regionalSearchChanged();
     if (buckets_[2].page > 0) projectRegionalPage(1);
 }
 
@@ -101,10 +109,12 @@ void BangumiController::projectRegionalPage(int page) {
 }
 
 void BangumiController::startFetch(int bucket, int page) {
+    const auto generation = listGeneration_;
     auto *watcher = new QFutureWatcher<ListResult>(this);
-    connect(watcher, &QFutureWatcher<ListResult>::finished, this, [this, watcher, bucket, page] {
+    connect(watcher, &QFutureWatcher<ListResult>::finished, this, [this, watcher, bucket, page, generation] {
         const auto result = watcher->result();
         watcher->deleteLater();
+        if (generation != listGeneration_) return;
         if (bucket == 3 && result.error.isEmpty()) regionalItems_ = result.items;
         QVariantList items;
         for (const auto &season : result.items) items.append(toItemMap(season));
@@ -186,7 +196,11 @@ QVariantMap BangumiController::seasonDetail(qint64 seasonId, bool regional) {
                               : QNetworkProxy(QNetworkProxy::NoProxy)};
     queuedSeason_.reset();
     const auto it = seasonCache_.constFind(cacheKey(seasonId, regional));
-    if (it != seasonCache_.constEnd()) return it.value();
+    if (it != seasonCache_.constEnd()) {
+        seasonCacheUse_.removeAll(it.key());
+        seasonCacheUse_.append(it.key());
+        return it.value();
+    }
     queuedSeason_ = latestSeason_;
     if (!seasonBusy_) startSeasonFetch();
     return {};
@@ -236,7 +250,11 @@ void BangumiController::finishSeasonFetch(const SeasonRequest &request, const QV
     seasonBusy_ = false;
     if (request.generation == seasonGeneration_) {
         if (error.isEmpty()) {
-            seasonCache_.insert(cacheKey(request.id, request.regional), detail);
+            const auto key = cacheKey(request.id, request.regional);
+            seasonCacheUse_.removeAll(key);
+            seasonCacheUse_.append(key);
+            while (seasonCacheUse_.size() > 12) seasonCache_.remove(seasonCacheUse_.takeFirst());
+            seasonCache_.insert(key, detail);
             emit seasonDetailReady(detail);
         } else { emit errorOccurred(error); }
     }
@@ -266,4 +284,24 @@ QVariantMap BangumiController::toItemMap(const BangumiApi::BangumiSeason &season
     map.insert("url", season.url);
     map.insert("rawJson", season.rawJson);
     return map;
+}
+
+void BangumiController::releasePageCache() {
+    ++listGeneration_;
+    ++seasonGeneration_;
+    for (auto &bucket : buckets_) bucket = {};
+    regionalItems_ = {};
+    regionalSearch_.clear();
+    seasonCache_ = {};
+    seasonCacheUse_ = {};
+    queuedSeason_.reset();
+    latestSeason_ = {};
+    // Keep the in-flight detail gate: its completion may start a newly queued
+    // request, but the old generation cannot publish or refill this cache.
+    busy_ = false;
+    unauthorized_ = false;
+    emit busyChanged();
+    emit unauthorizedChanged();
+    emit pageItemsChanged();
+    emit pageInfoChanged();
 }

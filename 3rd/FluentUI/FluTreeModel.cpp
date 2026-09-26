@@ -105,6 +105,8 @@ void FluTreeModel::checkRow(int row, bool checked) {
 }
 
 void FluTreeModel::setDataSource(QList<QMap<QString, QVariant>> data) {
+    beginResetModel();
+    _rows.clear();
     _dataSource.clear();
     if (_root) {
         delete _root;
@@ -115,7 +117,9 @@ void FluTreeModel::setDataSource(QList<QMap<QString, QVariant>> data) {
     while (data.count() > 0) {
         auto item = data.at(data.count() - 1);
         data.pop_back();
-        auto *node = new FluTreeNode(this);
+        // The root owns every node, including collapsed rows. Replacing the
+        // source must release the previous tree, not retain it under the model.
+        auto *node = new FluTreeNode(_root);
         node->_depth = item.value("__depth").toInt();
         node->_parent = item.value("__parent").value<FluTreeNode *>();
         node->_data = item;
@@ -140,7 +144,6 @@ void FluTreeModel::setDataSource(QList<QMap<QString, QVariant>> data) {
             }
         }
     }
-    beginResetModel();
     _rows = _dataSource;
     endResetModel();
     dataSourceSize(_dataSource.size());

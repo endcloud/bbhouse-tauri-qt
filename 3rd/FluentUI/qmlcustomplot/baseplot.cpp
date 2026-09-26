@@ -83,6 +83,7 @@ Q_INVOKABLE void BasePlot::removeGraph(const QString &key)
 {
     if(m_graphs.contains(key)) {
         auto graph = m_graphs.take(key);
+        m_customPlot->removeGraph(graph->m_graph);
         delete graph;
         emit graphsChanged();
     }
@@ -135,4 +136,4 @@ void BasePlot::routeWheelEvents(QWheelEvent *event)
     QCoreApplication::postEvent(m_customPlot, newEvent);
 }
 
-} // namespace QmlQCustomPlot   
+} // namespace QmlQCustomPlot

@@ -41,6 +41,60 @@ bbhouse-qt --history-service-worker --config <绝对路径> --stop-handle <继�
 
 Qt Creator Debug 更新二进制前请先在服务管理中暂停，避免常驻进程占用 exe/DLL；编译后启用。正式长期运行仍推荐完整 Release 部署目录。
 
+## Windows 构建占用排查
+
+2026-09-19 在 Windows / Qt 6.11.1 / MinGW 13.1.0 的原 Qt Creator Debug 目录复现：
+
+```text
+ld.exe: cannot open output file ..\bin\bbhouse-history-service.exe: Permission denied
+collect2.exe: error: ld returned 1 exit status
+mingw32-make.exe: *** [app\CMakeFiles\bbhouse-history-service.dir\build.make:106: bin/bbhouse-history-service.exe] Error 1
+```
+
+`Error 1` 是 make 汇总信息，应查看它前面的链接器错误。本次 SCM 的运行中服务宿主路径与失败输出完全一致，服务还持有同目录的 `bbhouse-qt.exe` worker，导致 Windows 不允许链接器覆盖 EXE；没有发现对应的 C++ 或链接参数缺陷。
+
+恢复步骤：
+
+1. 在应用的本地历史服务管理中暂停服务并确认 Windows UAC，等待状态显示已停止。正常停止会通知 worker 取消并收尾，可能需要几十秒。
+2. 完全退出 GUI，再构建原 Qt Creator kit。关闭 GUI 本身不能停止 Session 0 的服务和 worker。
+3. 构建成功后按需重新启用服务。长期后台运行宜使用独立 Release 部署目录，以免再次占用开发输出。
+
+可在 PowerShell 7 中只读检查服务状态，并显示链接器完整错误：
+
+```powershell
+Get-CimInstance Win32_Service |
+    Where-Object { $_.Name -like 'com.bbhouse.history.*' } |
+    Select-Object Name, State, ProcessId, PathName |
+    Format-List
+
+& C:/Qt/Tools/CMake_64/bin/cmake.exe --build `
+    build/Desktop_Qt_6_11_1_MinGW_64_bit_Debug `
+    --target bbhouse-history-service --verbose
+```
+
+不要把 `taskkill /F`、删除 EXE、卸载服务或更改文件 ACL 作为此故障的常规处理。若服务已停止仍失败，应检查 GUI 或残留进程是否使用同一输出目录，再根据新的首个错误处理。
+
+解除占用后发现两个独立问题：
+
+- C 盘仅剩约 10 MB，编译器写临时汇编文件时报 `No space left on device`；用户释放空间后继续构建，代理未删除项目外文件。
+- MinGW Makefiles 报 `No rule to make target .../doc/Cookie导入帮助.md`，该文件实际存在。`app/CMakeLists.txt` 现通过 `configure_file(COPYONLY)` 暂存为构建目录中的 `help/cookie-import-help.md`，RCC 依赖使用英文路径；`QT_RESOURCE_ALIAS` 保留 `:/help/Cookie导入帮助.md`。原文档仍是唯一来源，修改后自动重新配置并更新资源。原文档与暂存文件 SHA-256 一致，生成的 make 依赖与 QRC 别名均已核对。
+
+本次 Windows 原生复验（2026-09-19）：
+
+- 原 Qt Creator `Desktop_Qt_6_11_1_MinGW_64_bit_Debug` / MinGW Makefiles 的 `bbhouse-qt`、`bbhouse-history-service`、`regression-tests` 全部构建成功，退出码 0。
+- 完整 CTest **34/39** 通过；`history-scheduler`、`history-sync`、`history-service-entry`、`history-service-worker` 以及登录和关于页面回归通过。
+- 以下 5 项单独串行复跑仍失败，本次没有修改这些运行时模块，不能将构建恢复表述为全量回归通过：
+
+| 测试 | Windows 本机失败现象 |
+|---|---|
+| `player-runtime` | 本地 HTTP 媒体、代理隔离及异步 DASH 音轨 fixture 多项断言失败；本地音频和 mpv 初始化通过 |
+| `danmaku-scene` | 收尾触发 `DanmakuEngine` QObject 类型/析构期断言，退出码 `0xc0000602` |
+| `preferences` | 代理配置保存、鉴权与快照相关断言失败 |
+| `popular-page` | 页面运行警告检查失败；其余已输出的页面断言通过，并有离屏字体目录警告 |
+| `history-controller` | 初始化失败后重试断言失败，随后 `start sync run: Parameter count mismatch` 异常终止 |
+
+测试使用项目 build 内隔离数据，未注册服务、改用户 ACL 或真实用户库。编译后服务仍保持停止，可由用户按需重新启用。OpenSpec 记录为 `fix-windows-service-build-lock`。
+
 ## 计划、停止与恢复
 
 - worker 每 500 ms 检查已保存的每日/每周 HH:mm，目标分钟执行，错过不补跑、不唤醒系统。关闭 GUI、退出登录后服务仍可运行；服务启用时配置为自动启动，暂停时停止并设为禁用。

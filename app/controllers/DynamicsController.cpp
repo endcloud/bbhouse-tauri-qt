@@ -1,3 +1,4 @@
+#include "core/ControllerTask.h"
 #include "core/PlaybackEntry.h"
 #include "controllers/DynamicsController.h"
 
@@ -19,6 +20,8 @@ constexpr int kMaxPagesPerRound = 6;
 constexpr int kTargetMatchesPerRound = 24;
 // 分区补查串行节流间隔(ms)
 constexpr int kZoneQueryIntervalMs = 250;
+// 加载池内存安全上限,远高于正常单次浏览量;仅托底超长会话下的无限累积。
+constexpr int kMaxPoolEntries = 2000;
 }  // namespace
 
 DynamicsController::DynamicsController(QObject *parent) : QObject(parent) {
@@ -44,6 +47,14 @@ QString DynamicsController::zoneFilter() const { return zoneFilter_; }
 QString DynamicsController::searchText() const { return searchText_; }
 
 bool DynamicsController::zoneGateActive() const { return zoneGateActive_; }
+
+qreal DynamicsController::scrollOffset() const { return scrollOffset_; }
+
+void DynamicsController::setScrollOffset(qreal value) {
+    if (qFuzzyCompare(scrollOffset_ + 1, value + 1)) return;
+    scrollOffset_ = value;
+    emit scrollOffsetChanged();
+}
 
 QString DynamicsController::categoryToString(DynamicCategory category) {
     switch (category) {
@@ -105,6 +116,7 @@ void DynamicsController::setSearchText(const QString &value) {
 }
 
 void DynamicsController::refresh() {
+    if (busy_) return;
     ++generation_;
     ended_ = false;
     unauthorized_ = false;
@@ -136,7 +148,7 @@ void DynamicsController::startLoad() {
     const QString offset = offset_;
     const FilterSnapshot snapshot{categoryFilter_, zoneFilter_, searchLower_};
 
-    QThreadPool::globalInstance()->start([this, generation, offset, snapshot] {
+    runControllerTask(this, [this, generation, offset, snapshot] {
         QList<DynamicFeedItem> collected;
         QString nextOffset = offset;
         bool hasMore = true;
@@ -182,21 +194,18 @@ void DynamicsController::startLoad() {
         } else {
             hasMore = false;
         }
-        QMetaObject::invokeMethod(
-                this,
-                [this, generation, collected, nextOffset, hasMore, error, unauthorized] {
-                    finishLoad(generation, collected, nextOffset, hasMore, error, unauthorized);
-                },
-                Qt::QueuedConnection);
+        return [this, generation, collected, nextOffset, hasMore, error, unauthorized] {
+            finishLoad(generation, collected, nextOffset, hasMore, error, unauthorized);
+        };
     });
 }
 
 void DynamicsController::finishLoad(int generation, const QList<DynamicFeedItem> &collected,
                                     const QString &nextOffset, bool hasMore,
                                     const QString &error, bool unauthorized) {
+    if (generation != generation_) return;  // Expired page results cannot clear a newer busy state.
     busy_.store(false);
     emit busyChanged();
-    if (generation != generation_) return;  // 刷新后的过期回应
 
     if (!error.isEmpty()) {
         // 失败不中断已加载内容(刷新场景下旧池继续呈现),offset 进度保留,
@@ -212,6 +221,7 @@ void DynamicsController::finishLoad(int generation, const QList<DynamicFeedItem>
     // 刷新成功一轮:丢弃旧池与旧投影,以本轮数据重建(去重分组已在 refresh 清空)
     if (refreshPending_) {
         pool_.clear();
+        nextPoolOrder_ = 0;
         refreshPending_ = false;
     }
 
@@ -236,6 +246,7 @@ void DynamicsController::mergeItems(const QList<DynamicFeedItem> &collected) {
             if (existing < 0) {
                 poolAids_.insert(item.aid);
                 QVariantMap map = toItemMap(item);
+                map.insert("_poolOrder", ++nextPoolOrder_);
                 if (zoneCache_.contains(item.aid)) {
                     map.insert("zoneName", zoneCache_.value(item.aid));
                 }
@@ -246,7 +257,9 @@ void DynamicsController::mergeItems(const QList<DynamicFeedItem> &collected) {
                 const bool earlier =
                         item.pubTs > 0 && (currentTs <= 0 || item.pubTs < currentTs);
                 if (earlier) {
+                    const QVariant order = map.value("_poolOrder");
                     map = toItemMap(item);
+                    map.insert("_poolOrder", order);
                     if (zoneCache_.contains(item.aid)) {
                         map.insert("zoneName", zoneCache_.value(item.aid));
                     }
@@ -259,7 +272,9 @@ void DynamicsController::mergeItems(const QList<DynamicFeedItem> &collected) {
         // 非视频按动态 id 独立呈现(同 id 重复条目不重复渲染)
         if (!item.id.isEmpty() && poolIds_.contains(item.id)) continue;
         if (!item.id.isEmpty()) poolIds_.insert(item.id);
-        pool_.append(toItemMap(item));
+        QVariantMap map = toItemMap(item);
+        map.insert("_poolOrder", ++nextPoolOrder_);
+        pool_.append(map);
         dirty = true;
     }
     if (!dirty) return;
@@ -272,6 +287,35 @@ void DynamicsController::mergeItems(const QList<DynamicFeedItem> &collected) {
                          return a.toMap().value("pubTs").toLongLong() >
                                 b.toMap().value("pubTs").toLongLong();
                      });
+    trimPool();
+}
+
+void DynamicsController::trimPool() {
+    const int excess = pool_.size() - kMaxPoolEntries;
+    if (excess <= 0) return;
+    QList<int> oldest;
+    oldest.reserve(pool_.size());
+    for (int i = 0; i < pool_.size(); ++i) oldest.append(i);
+    std::sort(oldest.begin(), oldest.end(), [this](int a, int b) {
+        return pool_[a].toMap().value("_poolOrder").toULongLong() <
+               pool_[b].toMap().value("_poolOrder").toULongLong();
+    });
+    oldest.resize(excess);
+    std::sort(oldest.begin(), oldest.end(), std::greater<int>());
+    for (const int index : oldest) {
+        const QVariantMap map = pool_.at(index).toMap();
+        if (map.value("category").toString() == QLatin1String("video")) {
+            const qint64 aid = map.value("aid").toLongLong();
+            if (aid > 0) {
+                poolAids_.remove(aid);
+                aidOccurrences_.remove(aid);
+                pendingZoneAids_.removeAll(aid);
+            }
+        } else {
+            poolIds_.remove(map.value("id").toString());
+        }
+        pool_.removeAt(index);
+    }
 }
 
 void DynamicsController::decorateDuplicates() {
@@ -309,6 +353,7 @@ void DynamicsController::reproject() {
         if (matchesFilter(value.toMap(), snapshot)) items.append(value);
     }
     if (items_ == items) return;
+    emit itemsAboutToChange();
     items_ = items;
     cardModel_.setItems(items_);
     emit itemsChanged();
@@ -381,7 +426,8 @@ void DynamicsController::pumpZoneQueue() {
     const qint64 aid = pendingZoneAids_.takeFirst();
     zoneInFlight_ = true;
     updateZoneGate();
-    QThreadPool::globalInstance()->start([this, aid] {
+    const auto generation = zoneGeneration_;
+    runControllerTask(this, [this, aid, generation] {
         QString zoneName;
         try {
             const QString cookie =
@@ -398,9 +444,9 @@ void DynamicsController::pumpZoneQueue() {
         } catch (const std::exception &) {
             zoneName = Loc::get("未知分区");
         }
-        QMetaObject::invokeMethod(
-                this, [this, aid, zoneName] { applyZoneResult(aid, zoneName); },
-                Qt::QueuedConnection);
+        return [this, aid, zoneName, generation] {
+            if (generation == zoneGeneration_) applyZoneResult(aid, zoneName);
+        };
     });
 }
 
@@ -484,4 +530,41 @@ QVariantMap DynamicsController::toItemMap(const DynamicFeedItem &item) {
     map.insert("zoneName", QString());
     map.insert("duplicateCount", 1);
     return PlaybackEntry::normalize(map);
+}
+
+void DynamicsController::releasePageCache() {
+    ++generation_;
+    ++zoneGeneration_;
+    zoneTimer_.stop();
+    busy_ = false;
+    zoneInFlight_ = false;
+    ended_ = false;
+    unauthorized_ = false;
+    refreshPending_ = false;
+    offset_.clear();
+    pool_ = {};
+    items_ = {};
+    cardModel_.setItems({});
+    zoneNames_ = {};
+    poolIds_ = {};
+    poolAids_ = {};
+    aidOccurrences_ = {};
+    zoneCache_ = {};
+    pendingZoneAids_ = {};
+    zoneFilter_.clear();
+    searchText_.clear();
+    searchLower_.clear();
+    scrollAnchor_ = {};
+    scrollOffset_ = 0;
+    updateZoneGate();
+    emit scrollAnchorChanged();
+    emit scrollOffsetChanged();
+    emit busyChanged();
+    emit endedChanged();
+    emit unauthorizedChanged();
+    emit poolChanged();
+    emit itemsChanged();
+    emit zoneNamesChanged();
+    emit zoneFilterChanged();
+    emit searchTextChanged();
 }

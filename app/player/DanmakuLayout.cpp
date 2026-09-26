@@ -26,6 +26,7 @@ QFont DanmakuLayout::platformFont(int pixels) {
 
 void DanmakuLayout::load(const QVariantList &entries) {
     entries_.clear();
+    if (entries.isEmpty()) entries_.squeeze();
     maxScale_ = 1;
     for (const auto &value : entries) {
         const auto map = value.toMap();

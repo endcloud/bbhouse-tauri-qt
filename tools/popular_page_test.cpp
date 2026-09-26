@@ -38,6 +38,10 @@ int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     qputenv("QT_QUICK_BACKEND", "software");
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
+#ifdef Q_OS_WIN
+    if (qEnvironmentVariableIsEmpty("QT_QPA_FONTDIR"))
+        qputenv("QT_QPA_FONTDIR", qgetenv("WINDIR") + "/Fonts");
+#endif
     QApplication app(argc, argv);
     qInstallMessageHandler(logger);
     QQmlEngine engine;

@@ -21,10 +21,13 @@ FluPage {
     property var controller: SpecialFollowController
     property bool spaceMode: false
 
-    // 标题栏搜索投影(由 MainWindow 向当前页提交):当前档当前页条目,空词恢复全量
-    property string searchQuery: ""
+    // 标题栏搜索投影(由 MainWindow 向当前页提交):当前档当前页条目,空词恢复全量。
+    // 初始值读自控制器保留的搜索词(渲染重建后回显,而非清零覆盖)。
+    property string searchQuery: page.controller.searchText
     readonly property string queryLower: searchQuery.trim().toLowerCase()
     readonly property bool searching: queryLower !== ""
+
+    onSearchQueryChanged: page.controller.searchText = searchQuery
 
     // ---- 三档定义(单 SelectorBar) ----
     readonly property var tabDefs: [
@@ -32,7 +35,8 @@ FluPage {
         { key: "seasons", label: qsTr("合集") },
         { key: "articles", label: qsTr("专栏") }
     ]
-    property int currentTab: 0
+    // 初始值读自控制器保留的档位(渲染重建后回显,而非硬编码 0)
+    property int currentTab: page.controller.currentTab
 
     // ---- UP 列表与当前选中 ----
     readonly property bool upsReady: spaceMode || page.controller.upsReady
@@ -132,7 +136,9 @@ FluPage {
 
     function resetView() {
         searchQuery = ""
+        page.controller.searchText = ""
         currentTab = 0
+        page.controller.currentTab = 0
         expandedSeason = null
         expandedVideos = []
         pendingSeasonRequest = 0
@@ -147,6 +153,7 @@ FluPage {
     function selectTab(index) {
         if (currentTab === index) return
         currentTab = index
+        page.controller.currentTab = index  // 同步到控制器记忆
         scroll_view.contentY = 0  // 切档回顶(数据状态仍按档缓存)
         syncPaginationBar()
         page.controller.ensureCurrentTabLoaded(index)

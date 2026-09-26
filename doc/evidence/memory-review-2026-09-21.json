@@ -1,0 +1,894 @@
+{
+  "date": "2026-09-21",
+  "scope": "离线合成片源，不含 QML、弹幕、在线缓存、Dolby Vision/HDR 元数据；没有变更产品设置。",
+  "runtime": {
+    "mpv": "mpv v0.41.0-1049-g0b7ed670f",
+    "ffmpeg": "N-126580-g1f9ba3fb6",
+    "dll_sha256": "7469D0493ED908CA4D3EA46681B930CCC29A159F430E4375A0305BBA94F3DEBA",
+    "dll_source_and_build_bin_identical": true,
+    "gl_renderer": "Intel(R) Arc(TM) 140T GPU (16GB)",
+    "gl_version": "3.2.0 - Build 32.0.101.8861",
+    "logical_cpu_count": 16
+  },
+  "memory_units": {
+    "private_mib": "Windows PrivateUsage: 私有提交量，MiB",
+    "working_set_mib": "Windows WorkingSetSize: 总工作集，含共享页，MiB；不等同任务管理器活动私有工作集",
+    "gpu_memory": "未单独测量专用/共享 GPU 内存"
+  },
+  "fixture": {
+    "codec": "HEVC Main 10",
+    "pixel_format": "yuv420p10le",
+    "sizes": [
+      [
+        1920,
+        1080
+      ],
+      [
+        3840,
+        2160
+      ]
+    ],
+    "fps": 24,
+    "duration_seconds": 4,
+    "audio": false,
+    "dolby_vision_metadata": false,
+    "hdr_metadata": false,
+    "native_sample_duration_per_phase_seconds": 6,
+    "source": "FFmpeg lavfi testsrc2; libx265 ultrafast, crf 28, pools 4, frame-threads 2"
+  },
+  "runtime_default_options": {
+    "cache": "auto",
+    "cache-secs": "3600000.000000",
+    "demuxer-readahead-secs": "1.000000",
+    "demuxer-max-bytes": "157286400",
+    "demuxer-max-back-bytes": "52428800",
+    "demuxer-donate-buffer": "yes",
+    "demuxer-hysteresis-secs": "0.000000",
+    "vd-lavc-threads": "0",
+    "vd-lavc-dr": "auto",
+    "hwdec-extra-frames": "auto",
+    "video-sync": "audio",
+    "interpolation": "no",
+    "fbo-format": "auto",
+    "scale": "lanczos",
+    "dscale": "hermite",
+    "hwdec": "auto-safe",
+    "gpu-api": "",
+    "gpu-context": ""
+  },
+  "native_runs": [
+    {
+      "id": "4k-gl-auto",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.7,
+        "working_set_mib": 29.93
+      },
+      "initialized": {
+        "private_mib": 84.51,
+        "working_set_mib": 85.63
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "5",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1610.64,
+          "peak_working_set_mib": 1616.42,
+          "last_private_mib": 1610.64,
+          "last_working_set_mib": 1616.42,
+          "sample_count": 45
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 630.09,
+        "working_set_mib": 658.12
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 598.34,
+        "working_set_mib": 626.75
+      }
+    },
+    {
+      "id": "switch-gl-auto",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.73,
+        "working_set_mib": 28.64
+      },
+      "initialized": {
+        "private_mib": 84.72,
+        "working_set_mib": 84.75
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "1",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "1080",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "1920"
+          },
+          "peak_private_mib": 536.63,
+          "peak_working_set_mib": 545.31,
+          "last_private_mib": 536.63,
+          "last_working_set_mib": 545.31,
+          "sample_count": 49
+        },
+        {
+          "phase": 2,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1361.14,
+          "peak_working_set_mib": 1369.27,
+          "last_private_mib": 1350.45,
+          "last_working_set_mib": 1369.13,
+          "sample_count": 52
+        },
+        {
+          "phase": 3,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "1080",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "1920"
+          },
+          "peak_private_mib": 1322.47,
+          "peak_working_set_mib": 1340.57,
+          "last_private_mib": 668.73,
+          "last_working_set_mib": 689.98,
+          "sample_count": 52
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 627.89,
+        "working_set_mib": 648.04
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 608.13,
+        "working_set_mib": 633.75
+      }
+    },
+    {
+      "id": "4k-gl-extra4",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "4",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.69,
+        "working_set_mib": 28.76
+      },
+      "initialized": {
+        "private_mib": 84.29,
+        "working_set_mib": 84.54
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "4",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1604.86,
+          "peak_working_set_mib": 1599.15,
+          "last_private_mib": 1604.86,
+          "last_working_set_mib": 1599.15,
+          "sample_count": 47
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 630.87,
+        "working_set_mib": 649.04
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 597.43,
+        "working_set_mib": 617.62
+      }
+    },
+    {
+      "id": "4k-gl-extra0",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "0",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.68,
+        "working_set_mib": 28.76
+      },
+      "initialized": {
+        "private_mib": 84.55,
+        "working_set_mib": 84.48
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "0",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1610.86,
+          "peak_working_set_mib": 1607.42,
+          "last_private_mib": 1610.86,
+          "last_working_set_mib": 1607.42,
+          "sample_count": 47
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 632.36,
+        "working_set_mib": 649.74
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 599.03,
+        "working_set_mib": 617.97
+      }
+    },
+    {
+      "id": "4k-gl-threads4",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "4",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.72,
+        "working_set_mib": 28.79
+      },
+      "initialized": {
+        "private_mib": 84.77,
+        "working_set_mib": 84.84
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "4",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1589.8,
+          "peak_working_set_mib": 1583.61,
+          "last_private_mib": 1589.8,
+          "last_working_set_mib": 1583.61,
+          "sample_count": 50
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 631.71,
+        "working_set_mib": 649.87
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 598.13,
+        "working_set_mib": 617.99
+      }
+    },
+    {
+      "id": "4k-gl-d3d11va",
+      "settings": {
+        "hwdec": "d3d11va",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.7,
+        "working_set_mib": 28.61
+      },
+      "initialized": {
+        "private_mib": 84.61,
+        "working_set_mib": 84.75
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "4",
+            "hwdec-current": "no",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "yuv420p10",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1477.54,
+          "peak_working_set_mib": 1494.6,
+          "last_private_mib": 1477.48,
+          "last_working_set_mib": 1494.59,
+          "sample_count": 49
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 754.78,
+        "working_set_mib": 772.54
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 723.47,
+        "working_set_mib": 742.09
+      }
+    },
+    {
+      "id": "4k-gl-dxva2copy",
+      "settings": {
+        "hwdec": "dxva2-copy",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.7,
+        "working_set_mib": 28.77
+      },
+      "initialized": {
+        "private_mib": 84.63,
+        "working_set_mib": 84.58
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "dxva2-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1663.15,
+          "peak_working_set_mib": 1654.8,
+          "last_private_mib": 1661.67,
+          "last_working_set_mib": 1654.8,
+          "sample_count": 48
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 874.2,
+        "working_set_mib": 890.14
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 839.36,
+        "working_set_mib": 858.39
+      }
+    },
+    {
+      "id": "4k-gl-software4",
+      "settings": {
+        "hwdec": "no",
+        "vd-lavc-threads": "4",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.74,
+        "working_set_mib": 28.64
+      },
+      "initialized": {
+        "private_mib": 85.19,
+        "working_set_mib": 84.85
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "4",
+            "hwdec-current": "no",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/hwdec-extra-frames": "auto",
+            "options/vd-lavc-threads": "4",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "yuv420p10",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1064.94,
+          "peak_working_set_mib": 1074.95,
+          "last_private_mib": 1064.89,
+          "last_working_set_mib": 1074.95,
+          "sample_count": 49
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 759.83,
+        "working_set_mib": 770.3
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 727.84,
+        "working_set_mib": 739.34
+      }
+    },
+    {
+      "id": "4k-gl-no-dr",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "no",
+        "fbo-format": "auto",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.7,
+        "working_set_mib": 28.66
+      },
+      "initialized": {
+        "private_mib": 84.98,
+        "working_set_mib": 84.82
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "no",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1603.79,
+          "peak_working_set_mib": 1599.39,
+          "last_private_mib": 1603.79,
+          "last_working_set_mib": 1599.39,
+          "sample_count": 49
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 631.93,
+        "working_set_mib": 649.8
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 599.1,
+        "working_set_mib": 618.51
+      }
+    },
+    {
+      "id": "4k-gl-rgba8",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "rgba8",
+        "scale": "lanczos",
+        "dscale": "hermite",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.72,
+        "working_set_mib": 28.64
+      },
+      "initialized": {
+        "private_mib": 85.06,
+        "working_set_mib": 84.63
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "hermite",
+            "options/fbo-format": "rgba8",
+            "options/hwdec-extra-frames": "auto",
+            "options/scale": "lanczos",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1479.86,
+          "peak_working_set_mib": 1472.56,
+          "last_private_mib": 1477.55,
+          "last_working_set_mib": 1472.56,
+          "sample_count": 50
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 529.58,
+        "working_set_mib": 548.1
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 499.03,
+        "working_set_mib": 517.18
+      }
+    },
+    {
+      "id": "4k-gl-bilinear",
+      "settings": {
+        "hwdec": "auto-safe",
+        "vd-lavc-threads": "0",
+        "hwdec-extra-frames": "auto",
+        "vd-lavc-dr": "auto",
+        "fbo-format": "auto",
+        "scale": "bilinear",
+        "dscale": "bilinear",
+        "vo": "libmpv",
+        "ao": "null",
+        "cache": "no",
+        "keep-open": "always",
+        "output_fbo": [
+          1920,
+          1080
+        ]
+      },
+      "baseline": {
+        "private_mib": 21.74,
+        "working_set_mib": 28.64
+      },
+      "initialized": {
+        "private_mib": 84.57,
+        "working_set_mib": 84.96
+      },
+      "phases": [
+        {
+          "phase": 1,
+          "properties": {
+            "current-vo": "libmpv",
+            "decoder-frame-drop-count": "0",
+            "estimated-vf-fps": "24.000000",
+            "ffmpeg-version": "N-126580-g1f9ba3fb6",
+            "frame-drop-count": "0",
+            "hwdec-current": "d3d11va-copy",
+            "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+            "options/dscale": "bilinear",
+            "options/fbo-format": "auto",
+            "options/hwdec-extra-frames": "auto",
+            "options/scale": "bilinear",
+            "options/vd-lavc-dr": "auto",
+            "options/vd-lavc-threads": "0",
+            "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+            "video-params/gamma": "bt.1886",
+            "video-params/h": "2160",
+            "video-params/hw-pixelformat": "",
+            "video-params/pixelformat": "p010",
+            "video-params/primaries": "bt.709",
+            "video-params/w": "3840"
+          },
+          "peak_private_mib": 1458.32,
+          "peak_working_set_mib": 1459.78,
+          "last_private_mib": 1458.32,
+          "last_working_set_mib": 1459.78,
+          "sample_count": 51
+        }
+      ],
+      "after_stop_render_context_alive": {
+        "private_mib": 500.33,
+        "working_set_mib": 525.24
+      },
+      "after_mpv_destroy_gl_alive": {
+        "private_mib": 469.08,
+        "working_set_mib": 494.35
+      }
+    }
+  ],
+  "software_decoder_only_runs": [
+    {
+      "id": "4k-threads-auto",
+      "mode": "software-decoder-only",
+      "settings": {
+        "vo": "null",
+        "hwdec": "no",
+        "cache": "no",
+        "vd-lavc-threads": "0"
+      },
+      "peak_private_mib": 750.62,
+      "peak_working_set_mib": 753.97,
+      "last_private_mib": 750.62,
+      "last_working_set_mib": 753.97,
+      "properties": {
+        "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+        "ffmpeg-version": "N-126580-g1f9ba3fb6",
+        "hwdec-current": "no",
+        "current-vo": "null",
+        "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+        "video-params/w": "3840",
+        "video-params/h": "2160",
+        "video-params/pixelformat": "yuv420p10",
+        "estimated-vf-fps": "24.000000",
+        "decoder-frame-drop-count": "0",
+        "frame-drop-count": "0",
+        "demuxer-cache-duration": "0.000000"
+      }
+    },
+    {
+      "id": "4k-threads-4",
+      "mode": "software-decoder-only",
+      "settings": {
+        "vo": "null",
+        "hwdec": "no",
+        "cache": "no",
+        "vd-lavc-threads": "4"
+      },
+      "peak_private_mib": 332.47,
+      "peak_working_set_mib": 336.84,
+      "last_private_mib": 331.83,
+      "last_working_set_mib": 335.51,
+      "properties": {
+        "mpv-version": "mpv v0.41.0-1049-g0b7ed670f",
+        "ffmpeg-version": "N-126580-g1f9ba3fb6",
+        "hwdec-current": "no",
+        "current-vo": "null",
+        "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+        "video-params/w": "3840",
+        "video-params/h": "2160",
+        "video-params/pixelformat": "yuv420p10",
+        "estimated-vf-fps": "24.000000",
+        "decoder-frame-drop-count": "0",
+        "frame-drop-count": "0",
+        "demuxer-cache-duration": "0.000000"
+      }
+    }
+  ],
+  "limitations": [
+    "只是一轮受控测量，驱动高水位及运行顺序会影响峰值；不是用户真实视频的精确内存归因。",
+    "after_stop_render_context_alive 仍保留 mpv render context；after_mpv_destroy_gl_alive 仍保留 Qt OpenGL context/FBO/驱动/进程。",
+    "少量丢帧包括起播、shader 编译和离屏探针调度，不是帧率或用户观感验收。",
+    "未测试 native D3D11 presentation / PotPlayer / HDR Dolby Vision 元数据 / 在线 DASH。",
+    "不建议直接把降精度、降缩放质量、强制硬解或解码线程实验值作为产品默认值。"
+  ]
+}

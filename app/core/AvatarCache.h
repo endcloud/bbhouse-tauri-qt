@@ -16,6 +16,7 @@ public:
     static constexpr qint64 LifetimeMs = 7LL * 24 * 60 * 60 * 1000;
     explicit AvatarCache(const QString &directory, QObject *parent = nullptr, Clock clock = {});
     static AvatarCache *instance();
+    Q_INVOKABLE void releaseMemoryCache();
     QUrl resolve(const QString &userId, const QUrl &remoteUrl);
 
 signals:
@@ -32,6 +33,7 @@ private:
     QString directory_;
     Clock clock_;
     QNetworkAccessManager network_;
+    QStringList entryUse_;
     QHash<QString, Entry> entries_;
     QHash<QString, QUrl> latestUrls_;
     QSet<QString> pending_;

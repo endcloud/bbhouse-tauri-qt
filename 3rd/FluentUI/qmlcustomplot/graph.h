@@ -51,6 +51,7 @@ private:
     void updateProperty() noexcept;
 
 private:
+    friend class BasePlot;
     QCustomPlot *m_parentPlot = nullptr;
     QCPGraph *m_graph = nullptr;
 };

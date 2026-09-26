@@ -2,27 +2,29 @@
 
 更新：2026-09-19；OpenSpec：`package-macos-release`。本次为当前 Mac 的本地验收包，没有上传 GitHub Release，也没有改变先前保留的字体授权阻塞决定。
 
-## 本次产物
+## 已验证的 BBHouse 2.0.2 产物
 
-目录：`build/release/bbhouse-qt-macos-arm64_20260919_161057/`。
+本次按当前源码重新构建 **BBHouse 2.0.2**，生成 `BBHouse.app`、`BBHouse-2.0.2-macos-arm64.dmg`，磁盘映像卷名为 `BBHouse`。
+
+目录：`build/release/BBHouse-macos-arm64_20260919_204221/`。
 
 | 文件 | 用途 | 体积 |
 | --- | --- | ---: |
-| `bbhouse-qt.app` | 可复制到 Applications 的独立应用，版本 1.0.1 | 176,110,925 字节，约 168.0 MiB（常规文件逻辑总量，不重复计符号链接） |
-| `bbhouse-qt-1.0.1-macos-arm64.dmg` | 只读压缩 HFS+ 磁盘映像，包含应用、Applications 快捷入口及说明 | 69,671,328 字节，约 66.4 MiB |
+| `BBHouse.app` | 可复制到 Applications 的独立应用，版本 2.0.2 | 176,111,073 字节，约 168.0 MiB（常规文件逻辑总量，不重复计符号链接） |
+| `BBHouse-2.0.2-macos-arm64.dmg` | 只读压缩 HFS+ 磁盘映像，包含应用、Applications 快捷入口及说明 | 69,671,060 字节，约 66.4 MiB |
 | `使用说明.md` / `SHA256SUMS` | 安装说明与 DMG 校验值 | — |
 
-DMG SHA-256：`8ca197255164f519856e96c77511f94c0c7cfbb4b7dce4a36ed2cf96edc362b1`。
+DMG SHA-256：`abc4e0b1c5e3b9e6dd05a1650ede6aa69de6eee5f516dfb6990f525db3063889`。
 
 **适用平台：Apple Silicon / arm64，macOS 27.0 或更新版本。** 本机 Homebrew libmpv 和部分媒体依赖的 Mach-O 最低系统版本为 27.0，因此 Info.plist 如实记录该下限；更早系统需要重新选择/编译兼容媒体依赖，不能只修改 plist 绕过。
 
 本机没有有效 Developer ID 签名身份，本包使用 ad-hoc 签名并通过完整签名校验，**未做 Apple 公证**。当前机器本地试用与公开下载后的 Gatekeeper 行为不同；此交付不宣称可在所有机器上免提示打开。
 
-本次附带 aria2 1.37.0、FFmpeg 9.0.1、curl 8.22.0 和 51 个 Homebrew formula 的版本/许可材料。新包全部验证成功后，已清理 6 个旧版及失败中间包目录；`build/release/` 仅保留此次交付，构建缓存和工具环境保留。
+本次附带 aria2 1.37.0、FFmpeg 9.0.1、curl 8.22.0 和 51 个 Homebrew formula 的版本/许可材料。新包全部验证成功后，已清理上一版 1.0.1 交付目录；`build/release/` 仅保留此次交付，构建缓存和工具环境保留。
 
 ## 安装与凭据
 
-打开 DMG，将左侧 `bbhouse-qt.app` 拖入右侧 Applications。应用包含 Qt、FluentUI、QML/图片/SQLite 插件、libmpv、aria2c、FFmpeg、curl 及其动态依赖，运行不需要安装 Qt SDK 或 Homebrew。
+打开 DMG，将左侧 `BBHouse.app`拖入右侧 Applications。应用包含 Qt、FluentUI、QML/图片/SQLite 插件、libmpv、aria2c、FFmpeg、curl 及其动态依赖，运行不需要安装 Qt SDK 或 Homebrew。
 
 账号数据不随包附带。可在首次登录窗口导入 Cookie，或手动将主 Cookie 文件命名为 `bilibili.cookie.txt`，放到：
 
@@ -46,7 +48,9 @@ DMG SHA-256：`8ca197255164f519856e96c77511f94c0c7cfbb4b7dce4a36ed2cf96edc362b1`
 - 附项目许可、第三方说明、Qt SPDX、Homebrew 依赖许可证及实际使用的 formula 版本与构建配方；清单去掉本机缓存路径。不包含 Cookie、INI、观看库、缓存或用户截图。
 - dmgbuild 直接生成 Finder 图标布局，应用与 Applications 在两侧，说明在下方；不通过 Finder UI 自动化操作。DMG 完成后校验、只读挂载，再从映像复制应用到新的目录复测。
 
-所有交付写入项目 `build/release/` 下的时间戳目录，不覆盖同名产物；传入 `--clean-old` 时，在新包及 DMG 全部检查通过后清理旧的 macOS 交付目录，保留构建缓存和工具环境。临时安装、媒体 fixture、挂载点、失败中间包都在本项目 build 内管理；不改写 Qt/Homebrew 原始安装文件。
+所有交付写入项目 `build/release/BBHouse-macos-arm64_<时间戳>/`，不覆盖同名产物；传入 `--clean-old` 时，在新包及 DMG 全部检查通过后清理 `build/release/` 下严格匹配 `BBHouse-macos-arm64_YYYYMMDD_HHMMSS` 或旧 `bbhouse-qt-macos-arm64_YYYYMMDD_HHMMSS` 的真实目录，不跟随符号链接，保留构建缓存和工具环境。临时安装、媒体 fixture、挂载点、失败中间包都在本项目 build 内管理；不改写 Qt/Homebrew 原始安装文件。
+
+应用显示名称为 `BBHouse`，`CFBundleName`、`CFBundleDisplayName` 与 `.app`/DMG 名称一致；版本仍从 CMake 的 `project` 声明读取。内部可执行文件 `bbhouse-qt`、bundle ID `io.github.endcloud.bbhouse-qt` 和上述用户数据路径保留，已有配置继续可用。
 
 ## 重建
 
@@ -71,7 +75,7 @@ python3 scripts/package-macos.py --clean-old
 - 冒烟额外使用 macOS sandbox 禁止网络，以及读取 `/opt/homebrew`、`/usr/local`、开发 Qt 和 build/bin。验证 `dladdr` 实际加载包内 libmpv，播放合成 PCM WAV 至正常 EOF；验证 QSQLITE 创建/写入/查询、JPEG/WebP 插件、资源图片解码，以及实际 SettingsPage.qml 无错误装载。
 - 三个包内工具执行版本检查；FFmpeg 将合成 WAV 编码 AAC/M4A、无损转封装并解码，curl 使用 file 协议精确复制 fixture。独立沙箱只允许本机临时 HTTP 端口，验证 aria2c/curl 下载字节一致，继续拒绝 Homebrew 读取。
 - 从只读 DMG 复制到新路径后的相同冒烟通过，证明运行不依赖原交付路径。使用原生 Cocoa 插件，但没有启动账号首页、真实请求或 UI 操作。
-- OpenSpec 严格校验、Python 语法和 diff 检查通过。Git 隐私扫描命中两项（同一登录测试文件的工作树与历史版本）；复核均为以 fixture 命名的合成测试值，未发现真实凭据。打包不包含这些测试文件或任何用户配置/数据库。
+- OpenSpec 严格校验和 diff 检查通过；核对应用名称、版本、兼容 bundle ID 正确，交付目录未包含 Cookie、INI 或用户数据库。历史源码隐私审计记录见 [隐私审计](发布隐私审计.md)。
 
 以上不替代用户拖拽安装、完整界面、真实账号在线播放、硬解/音画同步及跨显示器手测。
 

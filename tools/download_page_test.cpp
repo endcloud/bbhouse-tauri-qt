@@ -380,9 +380,51 @@ int main(int argc, char **argv) {
           && !dialog->property("validationMessage").toString().isEmpty(), "empty content selection keeps dialog open and does not enqueue");
     QMetaObject::invokeMethod(dialog, "close");
     settle();
+    // Retain only scalar route state while destroying the actual QML item tree.
+    QQmlComponent stateComponent(&engine);
+    stateComponent.setData("import QtQml; QtObject { property var value: ({}) }", QUrl());
+    std::unique_ptr<QObject> state(stateComponent.create());
+    QVariantList library;
+    for (int n = 1; n <= 95; ++n) library.append(card(n));
+    stub->setProperty("library", library);
+    page->setProperty("navigationState", QVariant::fromValue(state.get()));
+    page->setProperty("showingLibrary", true);
+    page->setProperty("searchQuery", "Fixture");
+    QMetaObject::invokeMethod(page, "selectPage", Q_ARG(QVariant, 2));
+    settle();
+    auto *scroll = page->findChild<QObject *>("downloadScrollView");
+    if (scroll) scroll->setProperty("contentY", 500.0);
+    settle();
+    QPointer<QQuickItem> retired(page);
+    object.reset();
+    check(!retired, "download route actually destroys the old QML tree");
+    object.reset(component.createWithInitialProperties({
+        {"navigationState", QVariant::fromValue(state.get())}, {"initialShowingLibrary", true},
+        {"width", 1000}, {"height", 700}}));
+    page = qobject_cast<QQuickItem *>(object.get());
+    if (!page) { qCritical() << component.errors(); return 1; }
+    page->setParentItem(window.contentItem());
+    settle();
+    scroll = page->findChild<QObject *>("downloadScrollView");
+    check(page->property("showingLibrary").toBool() && page->property("searchQuery").toString() == "Fixture"
+          && page->property("pageIndex").toInt() == 2 && scroll && qAbs(scroll->property("contentY").toDouble() - 500) < 1,
+          "download recreation restores search, library tab, page and scroll after layout");
+    page->setProperty("showingLibrary", false);
+    settle();
+    object.reset();
+    object.reset(component.createWithInitialProperties({
+        {"navigationState", QVariant::fromValue(state.get())}, {"initialShowingLibrary", true},
+        {"width", 1000}, {"height", 700}}));
+    page = qobject_cast<QQuickItem *>(object.get());
+    if (!page) return 1;
+    page->setParentItem(window.contentItem());
+    settle();
+    check(!page->property("showingLibrary").toBool(),
+          "later navigation preserves the selected queue even when login is still deferred");
     check(offline.requests == 0, "offline page and dialog do not request network resources");
     check(warnings == 0, "download page and dialog have no QML runtime warnings");
     host->setParentItem(nullptr);
     page->setParentItem(nullptr);
+    object.reset();
     return failures ? 1 : 0;
 }

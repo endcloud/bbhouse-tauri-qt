@@ -1,6 +1,7 @@
 #include "FluQrCodeItem.h"
 
 #include "qrcode/qrencode.h"
+#include <memory>
 
 FluQrCodeItem::FluQrCodeItem(QQuickItem *parent) : QQuickPaintedItem(parent) {
     _color = QColor(0, 0, 0, 255);
@@ -25,8 +26,10 @@ void FluQrCodeItem::paint(QPainter *painter) {
     if (_text.length() > 1024) {
         return;
     }
+    const std::unique_ptr<QRcode, decltype(&QRcode_free)> qrcode(
+        QRcode_encodeString(_text.toUtf8().constData(), 2, QR_ECLEVEL_Q, QR_MODE_8, 1), QRcode_free);
+    if (!qrcode) return;
     painter->save();
-    QRcode *qrcode = QRcode_encodeString(_text.toUtf8().constData(), 2, QR_ECLEVEL_Q, QR_MODE_8, 1);
     auto w = qint32(width());
     auto h = qint32(height());
     qint32 qrcodeW = qrcode->width > 0 ? qrcode->width : 1;
