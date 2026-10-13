@@ -1,14 +1,18 @@
 // Offline live-session regression: real mpv, local media, injected API snapshots.
 #include <QDataStream>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QSemaphore>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QTcpServer>
 #include <QThread>
 #include <QThreadPool>
+#include <QtEndian>
 #include <atomic>
 #include <functional>
 #include <iostream>
@@ -45,9 +49,22 @@ LivePlayInfo info(const QString &id, const QStringList &urls, int qn = 10000) {
     result.urls = urls;
     return result;
 }
+bool completeWav(const QString &path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly) || file.size() <= 44) return false;
+    const QByteArray header = file.read(12);
+    return header.left(4) == QByteArrayLiteral("RIFF") &&
+        header.mid(8, 4) == QByteArrayLiteral("WAVE") &&
+        qint64(qFromLittleEndian<quint32>(reinterpret_cast<const uchar *>(header.constData() + 4))) + 8 == file.size();
+}
 MpvClient *silentClient(QObject *owner) {
     MpvClient *client = MpvClient::create(owner);
-    if (client) client->setPropertyString("ao", "null");
+    if (client) {
+        client->setPropertyString("ao", "null");
+        // Keep unread packets available for recording after playback starts.
+        client->setPropertyString("cache-secs", "0.1");
+        client->setPropertyString("demuxer-readahead-secs", "0.1");
+    }
     return client;
 }
 }
@@ -55,8 +72,11 @@ MpvClient *silentClient(QObject *owner) {
 int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
-    QTemporaryDir temp(QCoreApplication::applicationDirPath() + "/live-player-XXXXXX");
-    check(temp.isValid(), "fixtures are created under build and automatically removed");
+    const QString tempRoot = QDir(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath())
+                                 .absoluteFilePath("../.tmp");
+    QDir().mkpath(tempRoot);
+    QTemporaryDir temp(tempRoot + "/live-player-XXXXXX");
+    check(temp.isValid(), "fixtures are created under project .tmp and automatically removed");
     const QString media = temp.path() + "/live.wav";
     QFile file(media);
     check(file.open(QIODevice::WriteOnly), "create local media fixture");
@@ -72,11 +92,12 @@ int main(int argc, char **argv) {
 
     std::atomic<int> resolves{0};
     std::atomic<int> requestedQn{0};
+    const QString recordingFixture = temp.path() + "/live-record.wav";
     LivePlayerController player(nullptr, [&](const QString &id, int qn) {
         ++resolves;
         requestedQn = qn;
         return info(id, {temp.path() + "/unavailable.flv", media}, qn);
-    }, silentClient);
+    }, silentClient, [&](const QString &, const QString &) { return recordingFixture; });
     player.setVolumePercent(36);
     player.openRoom(room("9007199254740993"));
     check(until([&] { return !player.loading(); }) && player.errorMessage().isEmpty(),
@@ -95,6 +116,14 @@ int main(int argc, char **argv) {
           "media proxy and FFmpeg environment proxy are disabled");
     check(client->getPropertyDouble("volume") == 36 && client->getPropertyDouble("speed") == 1,
           "live volume is session-local and playback speed stays normal");
+    player.toggleRecording();
+    check(player.recording(), "controller starts recording through stream-record");
+    const double recordStart = client->getPropertyDouble("time-pos");
+    check(until([&] { return client->getPropertyDouble("time-pos") > recordStart + 0.5; }),
+          "mpv consumes new packets while recording");
+    player.toggleRecording();
+    check(!player.recording() && until([&] { return completeWav(recordingFixture); }),
+          "real mpv recording contains media and a finalized RIFF length after stop");
     check(player.qualityLabel() == QStringLiteral("原画") && player.currentQn() == 10000,
           "quality label reflects API actual quality");
     player.togglePlayPause();
@@ -124,6 +153,94 @@ int main(int argc, char **argv) {
     check(player.videoItem()->client() == nullptr && player.roomId().isEmpty() &&
               player.qualities().isEmpty() && player.paused() && !player.loading(),
           "close stops media, detaches client and clears the ephemeral session");
+
+    const QString switchRecording = temp.path() + "/switch-record.wav";
+    LivePlayerController switching(nullptr, [&](const QString &id, int qn) {
+        return info(id, {media}, qn);
+    }, silentClient, [&](const QString &, const QString &) { return switchRecording; });
+    switching.openRoom(room("7"));
+    check(until([&] { return !switching.loading(); }) && switching.errorMessage().isEmpty(),
+          "switch recording fixture starts playback");
+    switching.toggleRecording();
+    check(switching.recording(), "switch fixture starts recording");
+    MpvClient *switchClient = switching.videoItem()->client();
+    check(until([&] { return switchClient->getPropertyDouble("time-pos") > 0.7; }),
+          "switch fixture records new media packets");
+    switching.openRoom(room("8"));
+    check(!switching.recording() && until([&] { return completeWav(switchRecording); }),
+          "switching live rooms closes the previous recording");
+    switching.closeRequested();
+
+    const QString closeRecording = temp.path() + "/close-record.wav";
+    LivePlayerController closing(nullptr, [&](const QString &id, int qn) {
+        return info(id, {media}, qn);
+    }, silentClient, [&](const QString &, const QString &) { return closeRecording; });
+    closing.openRoom(room("9"));
+    check(until([&] { return !closing.loading(); }) && closing.errorMessage().isEmpty(),
+          "close recording fixture starts playback");
+    closing.toggleRecording();
+    check(closing.recording(), "close fixture starts recording");
+    MpvClient *closeClient = closing.videoItem()->client();
+    check(until([&] { return closeClient->getPropertyDouble("time-pos") > 0.7; }),
+          "close fixture records new media packets");
+    closing.closeRequested();
+    check(!closing.recording() && until([&] { return completeWav(closeRecording); }),
+          "closing the player closes the active recording");
+
+    // Optional real H.264/AAC recording gate; no network or user downloads.
+    const QString ffmpeg = qEnvironmentVariable("BBHOUSE_LIVE_TEST_FFMPEG");
+    if (!ffmpeg.isEmpty()) {
+        const QString avMedia = temp.filePath("av.mp4");
+        QProcess generator;
+        generator.start(ffmpeg, {"-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "20",
+            "-c:v", "libx264", "-g", "10", "-pix_fmt", "yuv420p", "-c:a", "aac", avMedia});
+        const bool generated = generator.waitForFinished(15000) && generator.exitCode() == 0;
+        check(generated, "generate offline H264 AAC fixture");
+        if (generated) for (int action = 0; action < 4; ++action) {
+            const QString output = temp.filePath(QStringLiteral("live_测试主播_%1.mp4").arg(action));
+            auto av = std::make_unique<LivePlayerController>(nullptr,
+                [&](const QString &id, int qn) { return info(id, {avMedia}, qn); },
+                [](QObject *owner) {
+                    auto *mpv = silentClient(owner);
+                    if (mpv) mpv->setPropertyString("vo", "null");
+                    return mpv;
+                }, [&](const QString &, const QString &) { return output; });
+            int saved = 0, errors = 0;
+            QObject::connect(av.get(), &LivePlayerController::recordingSaved, &app,
+                             [&](const QString &) { ++saved; });
+            QObject::connect(av.get(), &LivePlayerController::recordingFailed, &app,
+                             [&](const QString &error) { ++errors; std::cerr << error.toStdString() << '\n'; });
+            av->openRoom(room("10"));
+            check(until([&] { return !av->loading(); }) && av->errorMessage().isEmpty(),
+                  "MP4 fixture plays");
+            auto *mpv = av->videoItem()->client();
+            if (!mpv) continue;
+            av->toggleRecording();
+            const double start = mpv->getPropertyDouble("time-pos");
+            check(av->recording() && until([&] { return mpv->getPropertyDouble("time-pos") > start + 2; }),
+                  "MP4 recording receives real audio and video packets");
+            if (action == 0) av->toggleRecording();
+            else if (action == 1) av->openRoom(room("11"));
+            else if (action == 2) av->closeRequested();
+            else av.reset();
+            if (action < 2) check(until([&] { return saved || errors; }) && saved == 1 && errors == 0,
+                                  "MP4 stop or room switch reports successful container verification");
+            // Retry only while mpv's demuxer thread is still flushing the trailer.
+            const bool decodable = until([&] {
+                if (QFileInfo(output).size() < 128) return false;
+                QProcess decode;
+                decode.start(ffmpeg, {"-v", "error", "-xerror", "-i", output,
+                    "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"});
+                return decode.waitForFinished(5000) && decode.exitCode() == 0;
+            });
+            check(decodable, action == 0 ? "MP4 manual stop decodes both tracks without error" :
+                  action == 1 ? "MP4 room switch decodes both tracks without error" :
+                  action == 2 ? "MP4 window close decodes both tracks without error" :
+                                "MP4 controller destruction decodes both tracks without error");
+            if (av) av->closeRequested();
+        }
+    }
 
     // The old room is held in the resolver while the new room finishes first.
     // A late old result must not replace metadata, errors, quality or the client.

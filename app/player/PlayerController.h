@@ -60,6 +60,8 @@ class PlayerController : public QObject {
     // 档位表 {qn,label,needVip,available}(available=响应内真实存在视频段)
     Q_PROPERTY(QVariantList qualities READ qualities NOTIFY qualitiesChanged)
     Q_PROPERTY(int currentQn READ currentQn NOTIFY qualitiesChanged)
+    Q_PROPERTY(QVariantList videoPages READ videoPages NOTIFY videoPagesChanged)
+    Q_PROPERTY(int currentPage READ currentPage NOTIFY videoPagesChanged)
     // 编码偏好 "avc"|"hev1"|"av1"(菜单选中态,持久化 App.Player.PreferCodec)
     Q_PROPERTY(QString preferCodec READ preferCodec NOTIFY preferCodecChanged)
     Q_PROPERTY(double speed READ speed NOTIFY speedChanged)
@@ -94,6 +96,8 @@ class PlayerController : public QObject {
     QString qualityLabel() const;
     QVariantList qualities() const;
     int currentQn() const;
+    QVariantList videoPages() const { return videoPages_; }
+    int currentPage() const { return currentPage_; }
     QString preferCodec() const;
     double speed() const;
     bool keepSpeed() const;
@@ -134,6 +138,7 @@ class PlayerController : public QObject {
     Q_INVOKABLE void setKeepSpeed(bool keep);
     // 保位换源(preferQn=0 表示接口默认最高)
     Q_INVOKABLE void setQuality(int qn);
+    Q_INVOKABLE void setPage(int index);
     // 编码偏好 "avc"|"hev1"|"av1",持久化 App.Player.PreferCodec(默认 hev1 / H.265)
     Q_INVOKABLE void setPreferCodec(const QString &codec);
     Q_INVOKABLE void toggleDanmaku();
@@ -149,6 +154,9 @@ class PlayerController : public QObject {
     // QML 随后真正关窗(隐藏/销毁由 FluWindow closeListener 承担)
     Q_INVOKABLE void closeRequested();
     Q_INVOKABLE void attachMediaWindow(QWindow *window);
+    // Remove FluentUI's native frame during display fullscreen. The original
+    // frame style is restored after returning to the prior window shape.
+    Q_INVOKABLE void setFullscreenWindow(QWindow *window, bool fullscreen);
 
    signals:
     void kernelAvailableChanged();
@@ -164,6 +172,7 @@ class PlayerController : public QObject {
     void loadingChanged();
     void fallbackChanged(bool fallback);
     void qualitiesChanged();
+    void videoPagesChanged();
     void preferCodecChanged();
     void speedChanged();
     void keepSpeedChanged();
@@ -275,6 +284,8 @@ class PlayerController : public QObject {
     bool fallback_ = false;
     QString qualityLabel_;
     QVariantList qualities_;
+    QVariantList videoPages_;
+    int currentPage_ = -1;
     int selectedQn_ = 0;
 
     double speed_ = 1.0;

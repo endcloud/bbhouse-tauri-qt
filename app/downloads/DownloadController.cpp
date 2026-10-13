@@ -79,6 +79,18 @@ bool removeEmptyDownloadDirectory(const QVariantMap &record) {
         return true; // Preserve any unrelated files, including hidden files.
     return QDir().rmdir(directory.absoluteFilePath()); // One empty directory; no parent traversal.
 }
+QString downloadIdentity(const QVariantMap &record) {
+    const QString videoKey = record.value("videoKey").toString().trimmed();
+    if (!videoKey.isEmpty()) return videoKey;
+    const QString business = record.value("business").toString();
+    if (business == QLatin1String("archive"))
+        return QStringLiteral("archive:%1:0").arg(record.value("oid").toString());
+    if (business == QLatin1String("pgc"))
+        return QStringLiteral("pgc:%1:0").arg(record.value("epId").toString());
+    return QStringLiteral("%1:%2:%3:%4")
+        .arg(business, record.value("oid").toString(), record.value("epId").toString(),
+             record.value("cid").toString());
+}
 }
 
 DownloadController::DownloadController(QObject *parent)
@@ -265,6 +277,21 @@ void DownloadController::enqueue(const QVariantMap &input) {
     const int qn = options.value("preferredQn", options.value("qn", preferredQn())).toInt();
     if (!video && !audio && !danmaku && !subtitles) {
         setError(Loc::get("请至少选择一种下载内容")); return;
+    }
+    const QString identity = downloadIdentity(entry);
+    // 视频下载已经包含音轨。同一条目已有视频任务/成品时，后续仅音频请求
+    // 没有新增资源，直接丢弃；相同资源的重复任务也不再入队。
+    for (const auto &value : records_) {
+        const QVariantMap existing = value.toMap();
+        if (downloadIdentity(existing) != identity) continue;
+        const bool existingVideo = existing.value("downloadVideo").toBool();
+        const bool existingAudio = existing.value("downloadAudio").toBool() && !existingVideo;
+        const bool requestedVideo = video;
+        const bool duplicateMedia = (requestedVideo && existingVideo) || (!requestedVideo && audio && (existingVideo || existingAudio));
+        if (duplicateMedia) {
+            setStatus(Loc::get("该视频已在下载记录中，已自动忽略重复任务"));
+            return;
+        }
     }
     QStringList needed;
     if (video || audio) needed << "aria2c" << "ffmpeg";

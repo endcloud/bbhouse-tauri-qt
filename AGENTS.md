@@ -1,8 +1,10 @@
 # 项目维护索引
 
+- Windows 在线媒体 HTTPS 修复（2026-09-26）：[根因、回归与交付](doc/Windows在线视频HTTPS信任修复.md)。禁用 mpv curl 保持直连后，捆绑 FFmpeg/OpenSSL 缺少系统 CA 导致在线视频装载失败；Windows 内核显式导出 Qt 系统 CA 到随共享 handle 清理的临时 PEM，保持 TLS 验证和环境代理隔离。发布必须通过 `DEPLOYMENT_HTTPS_OK` 本机证书拒绝/可信加载/独立音轨门禁；`fix-windows-media-https-trust` 待用户在线手测，未归档。
+
 - 内存优化修复（2026-09-21）：[页面可靠性修复与手测](doc/内存优化修复与杜比用例验证.md)、[播放器换档与真实杜比实测](doc/播放器换档内存修复与杜比实测.md)。optimize-memory-footprint 补齐页面恢复、分页控件、动态首次追加序淘汰及裁剪锚点；reduce-player-memory-churn 复用同内容在途/已完成弹幕、增加默认关闭的白名单诊断。BV1omoHYzEST 在 Arc 140T 的 OpenGL d3d11va-copy 私有提交阶段末313→1679→313MiB，主要杜比台阶尚未消除；独立原生D3D11探针峰值约1210MiB不等于Qt集成完成。2026-09-23 以远端 `ExpiringPageLoader` 为基线变基，单活跃 Loader 被取代，超时回收同步清除搜索/页码/滚动记忆。两项change待用户手测，未归档；勿把原SUMMARY预测数字作为实测。新版mpv curl会在空代理时读取环境代理，媒体使用已显式直连的libavformat路径；[探针工具](tools/memory-review/README.md)。
 
-- 当前品牌与版本：BBHouse 2.0.3，Windows 启动入口 BBHouse.exe；Qt/CMake 内部标识和用户数据路径保持兼容，见 [2.0.3 发布](doc/BBHouse2.0.3发布.md)。Windows Release 首帧闪退（SMTC 匿名命名空间接口被 GCC 优化为错误调用）已于 2026-09-19 用户确认 pass 并归档；发布必须保留真实视频和原生媒体回归门禁。
+- 当前品牌与版本：BBHouse 2.1.0，version-code 11（CMake 单一来源），Windows 启动入口 BBHouse.exe；Qt/CMake 内部标识和用户数据路径保持兼容，见 [2.0.3 发布](doc/BBHouse2.0.3发布.md)。Windows Release 首帧闪退（SMTC 匿名命名空间接口被 GCC 优化为错误调用）已于 2026-09-19 用户确认 pass 并归档；发布必须保留真实视频和原生媒体回归门禁。
 
 - 打包约定（2026-09-21 用户明确要求）：单纯版本更新和 Release 打包不需要 OpenSpec 介入，不创建、更新或归档 OpenSpec change；直接更新版本、构建验证、提交、打包并记录交付。实际功能变更仍使用 OpenSpec。
 
@@ -52,7 +54,8 @@
 
 - public 发布流程与 GitHub 认证：[发布与归档](doc/Qt源码发布与Tauri归档.md)。`migrate-public-repository` 已用户验收并同步归档。开发库与 `/Users/ziyu/Documents/code_g/bbhouse-tauri-qt` 是独立历史；后续按已授权范围白名单同步，保留 public README，排除原 .git/凭据/用户数据/构建产物/b3 链接；构建、CTest、隐私与规格校验后普通推送 master，核对远端 SHA，tauri 固定保留 d22550e。不得重复初始化或默认强推。Git 使用本机 SSH 认证为 endcloud；普通推送可能使用 Ruleset bypass，成功不等于已满足签名/PR 规则。文档维护不顺带发布开发新版本，tag/Release 另行授权。
 - public 2.0.3 同步与隐私复核（2026-09-26）：[交付记录](doc/public源码同步2.0.3.md)。白名单继续排除 CodeGraph 索引及两个旧编译库 `3rd/FluentUI/FluentUI/fluentuipluginplugin.lib` / `libfluentuipluginplugin.a`；完整 OpenSpec 归档同步，public README 保留。此次用户授权清理 public 的两个库与四个已归档图标旧记录，不扩大为今后项目外文件自动删除。
+- public 2.1.0 同步与隐私复核（2026-10-13）：[交付记录](doc/public源码同步2.1.0.md)。保留 public README，按本次用户明确要求与更新一起提交；沿用白名单和普通推送。HTTPS 本地回归的固定公用私钥仅按精确路径与完整 PEM 指纹识别，其他私钥/凭据继续拒绝；禁止为消除误报跳过整个文件或关闭规则。
 
-- 应用名称与版本：[名称统一（2.0.2 起）](doc/BBHouse名称与版本更新.md)，当前 2.0.3。全局显示名统一 BBHouse，版本从 CMake 读取；内部 bbhouse-qt 标识、数据路径、可执行文件名与 bundle ID 保持兼容，避免已有凭据/历史失联。macOS 新包为 BBHouse.app，Windows 产品资源与发行目录同步品牌。`rename-app-bbhouse-2-0-2` 已于 2026-09-19 用户确认并同步归档，发行包待后续重建。
+- 应用名称与版本：[名称统一（2.0.2 起）](doc/BBHouse名称与版本更新.md)，当前 2.1.0（version-code 11）。全局显示名统一 BBHouse，版本从 CMake 读取；内部 bbhouse-qt 标识、数据路径、可执行文件名与 bundle ID 保持兼容，避免已有凭据/历史失联。macOS 新包为 BBHouse.app，Windows 产品资源与发行目录同步品牌。`rename-app-bbhouse-2-0-2` 已于 2026-09-19 用户确认并同步归档，发行包待后续重建。
 
 - 内存与页面生命周期（2026-09-20）：[交付与手测](doc/内存生命周期与后台页面回收.md)、[指针所有权审计](doc/指针与资源所有权审计.md)。后台页面默认 5 分钟后卸载，设置可选 1/5/10/30 分钟；八类浏览控制器清理缓存并用 generation 拒绝旧结果。后台下载/同步/独立播放不随页面销毁。UP/榜单/番剧详情各保留最多 12 份缓存，头像内存元数据 512 项；QObject 父所有权、RAII、自有线程池析构等待和 watcher 回投必须保留。`optimize-memory-lifecycle` 待用户 UI/Windows 手测，未归档。

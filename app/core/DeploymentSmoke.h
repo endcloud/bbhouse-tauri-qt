@@ -39,6 +39,7 @@
 #include "player/MpvLib.h"
 #include "preferences/AppPreferences.h"
 #include "core/DeploymentVideoSmoke.h"
+#include "core/MediaHttpsSmoke.h"
 #include "player/SystemMediaWindowsSmoke.h"
 
 namespace deploymentSmoke {
@@ -312,6 +313,9 @@ inline int runDeploymentSmokeTest(int argc, char **argv) {
     player.reset();
 
 #ifdef Q_OS_WIN
+    if (!runMediaHttpsSmoke(scratch.path()))
+        return fail("verified HTTPS media/audio and proxy isolation");
+    QTextStream(stdout) << "DEPLOYMENT_HTTPS_OK: Windows system CA, TLS rejection, direct HTTPS media/audio\n";
     const QString mediaError = verifyWindowsSystemMediaBackend();
     if (!mediaError.isEmpty()) {
         errors << mediaError << '\n';
@@ -326,6 +330,8 @@ inline int runDeploymentSmokeTest(int argc, char **argv) {
     // plugins. Download settings use an empty isolated store. No history,
     // authentication, player or service controllers exist.
     AppController controller;
+    QTextStream(stdout) << "DEPLOYMENT_VERSION: " << controller.appVersion()
+                        << " code=" << controller.versionCode() << '\n';
     // A fresh directory guarantees there are no resumed tasks or covers. This
     // constructor only opens downloads.sqlite/downloads.ini in that directory;
     // it does not create an API client, read credentials or register a service.

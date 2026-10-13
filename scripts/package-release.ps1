@@ -78,6 +78,8 @@ function Invoke-IsolatedProcess([string]$file, [string[]]$arguments, [string]$wo
     }
     $psi.Environment['PATH'] = "$env:SystemRoot\System32;$env:SystemRoot"
     $psi.Environment['QT_ASSUME_STDERR_HAS_CONSOLE'] = '1'
+    $psi.Environment['TEMP'] = $build
+    $psi.Environment['TMP'] = $build
     $process = [Diagnostics.Process]::Start($psi)
     $stdout = $process.StandardOutput.ReadToEndAsync()
     $stderr = $process.StandardError.ReadToEndAsync()
@@ -104,6 +106,7 @@ function Test-Package([string]$directory, [string]$label) {
         '--deployment-smoke-test', '--scratch-dir', $build) $directory
     if ($output -notmatch 'DEPLOYMENT_SMOKE_OK:') { throw "隔离验证未完成: $output" }
     if ($output -notmatch 'DEPLOYMENT_VIDEO_OK:') { throw "原生视频验证未完成: $output" }
+    if ($output -notmatch 'DEPLOYMENT_HTTPS_OK:') { throw "HTTPS 媒体验证未完成: $output" }
     if (-not $output.Contains("DEPLOYMENT_IDENTITY: BBHouse $version")) { throw "运行时应用名称或版本不一致: $output" }
     if ($output -match 'Windows system media .*failed|Windows system media controls unavailable') {
         throw "Windows 系统媒体验证失败: $output"
@@ -145,7 +148,11 @@ $beforeBytes = (Get-ChildItem -LiteralPath $stage -Recurse -File | Measure-Objec
 $dropDirs = @('translations','qmltooling','generic','vectorimageformats','networkinformation','styles',
     'qml\QtQuick\NativeStyle','qml\QtQuick\Controls\FluentWinUI3','qml\QtQuick\Controls\Windows',
     'qml\QtQuick\Controls\Material','qml\QtQuick\Controls\Imagine','qml\QtQuick\Controls\Fusion',
-    'qml\QtQuick\Controls\Universal','qml\FluentUI')
+    'qml\QtQuick\Controls\Universal','qml\FluentUI',
+    # The app pins QT_QUICK_CONTROLS_STYLE=Basic, so the other styles' dialog
+    # implementations are dead weight too; windeployqt still ships them.
+    'qml\QtQuick\Dialogs\quickimpl\qml\+Fusion','qml\QtQuick\Dialogs\quickimpl\qml\+Imagine',
+    'qml\QtQuick\Dialogs\quickimpl\qml\+Material','qml\QtQuick\Dialogs\quickimpl\qml\+Universal')
 $dropFiles = @('fluentuiplugin.dll','Qt6Svg.dll','iconengines\qsvgicon.dll','imageformats\qsvg.dll',
     'tls\qcertonlybackend.dll','tls\qopensslbackend.dll','Qt6Lottie.dll','Qt6LottieVectorImageGenerator.dll',
     'Qt6QuickVectorImageGenerator.dll','Qt6Quick3DUtils.dll','Qt6QuickControls2Fusion.dll',
@@ -164,6 +171,14 @@ Get-ChildItem -LiteralPath (Join-Path $stage 'FluentUI') -Force | Where-Object N
     ForEach-Object { Remove-ProjectArtifact $_.FullName }
 Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Extension -in @('.qmltypes','.a','.prl','.pdb','.debug','.qrc') } |
     ForEach-Object { Remove-ProjectArtifact $_.FullName }
+# windeployqt leaves module directories behind with no qmldir once the unused
+# styles above are dropped; prune them so empty trees do not ship.
+foreach ($dir in (Get-ChildItem -LiteralPath $stage -Recurse -Directory -Force |
+        Sort-Object { $_.FullName.Length } -Descending)) {
+    if (-not (Get-ChildItem -LiteralPath $dir.FullName -Force)) {
+        Remove-ProjectArtifact $dir.FullName
+    }
+}
 foreach ($module in Get-ChildItem -LiteralPath $stage -Recurse -File -Filter qmldir) {
     $lines = Get-Content -LiteralPath $module.FullName | Where-Object { $_ -notmatch '^typeinfo ' }
     $lines | Set-Content -LiteralPath $module.FullName -Encoding utf8NoBOM
@@ -201,7 +216,7 @@ $fullHash = (& git -C $root rev-parse HEAD).Trim()
 $manifest = @("# BBHouse $version Windows Release", '', "- 提交：$fullHash", "- 版本：$version", '- 平台：Windows 10/11 x64，需正常显卡驱动。',
     '- 启动：双击 BBHouse.exe。账号/历史/配置不随包附带。',
     '- 已包含 Qt、FluentUI、libmpv、Vulkan Loader、aria2 和 FFmpeg；curl 使用系统自带版本。',
-    '- 已通过视频像素/进度/关闭重开、Windows 原生媒体状态回读、隔离部署、PE 依赖及媒体合并/封面/本机下载验证；UI 和在线业务仍需手测。',
+    '- 已通过 HTTPS 媒体/TLS 证书/代理隔离、视频像素/进度/关闭重开、Windows 原生媒体状态回读、隔离部署、PE 依赖及媒体合并/封面/本机下载验证；UI 和在线业务仍需手测。',
     '- 许可证与来源见 THIRD_PARTY_NOTICES.md 和 licenses；现有公开分发授权事项见项目发布文档。', '', $summary)
 $manifest | Set-Content -LiteralPath (Join-Path $target '使用说明.md') -Encoding utf8
 $check = Get-Content -LiteralPath (Join-Path $build 'release-published-check.json') -Raw | ConvertFrom-Json
@@ -209,7 +224,7 @@ $dependencyNotes = @('# 依赖与验证', '', "- 源码提交：$fullHash", "- x
     '- Qt 6.11.1 MinGW x64；运行库与插件已随包。', '- 所有非系统 PE 导入均已在包内解析。',
     '- 文件校验值见 SHA256SUMS；原始来源及许可见 THIRD_PARTY_NOTICES.md。', '')
 foreach ($entry in $check.tool_versions.PSObject.Properties) { $dependencyNotes += "- $($entry.Value)" }
-$dependencyNotes += @('', '- 系统 curl 与显卡驱动由 Windows 提供。', '- 视频和原生系统媒体回归不替代 UI/在线业务手测；全量 CTest 遗留失败与本次交付记录见项目 doc/WindowsRelease起播闪退修复.md。')
+$dependencyNotes += @('', '- 系统 curl 与显卡驱动由 Windows 提供。', '- 视频和原生系统媒体回归不替代 UI/在线业务手测；全量 CTest 与本次交付记录见项目 doc/BBHouse2.0.3发布.md。')
 $dependencyNotes | Set-Content -LiteralPath (Join-Path $target '依赖清单.md') -Encoding utf8
 $hashLines = Get-ChildItem -LiteralPath $target -Recurse -File | Sort-Object FullName | ForEach-Object {
     $relative = [IO.Path]::GetRelativePath($target, $_.FullName).Replace('\','/')

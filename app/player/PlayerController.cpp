@@ -1,6 +1,8 @@
 #include "core/PlaybackEntry.h"
 #include "player/PlayerController.h"
 
+#include "player/FullscreenWindow.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QFile>
@@ -28,6 +30,7 @@ namespace {
 constexpr const char *kKeyKeepSpeed = "App.Player.KeepSpeed";
 constexpr const char *kKeySpeed = "App.Player.Speed";
 constexpr const char *kKeyPreferCodec = "App.Player.PreferCodec";
+constexpr const char *kKeyPreferredQn = "App.Player.PreferredQn";
 
 constexpr int kPollIntervalMs = 100;        // 位置轮询(弹幕时基 100ms 级)
 constexpr qint64 kSaveIntervalMs = 5000;    // 位置落库节流:每 5s
@@ -53,6 +56,9 @@ PlayerController::PlayerController(QObject *parent)
                      ? prefs->value(QString::fromLatin1(kKeySpeed), 1.0).toDouble()
                      : 1.0;
     preferCodec_ = prefs->value(QString::fromLatin1(kKeyPreferCodec), "hev1").toString();
+    const int savedQn = prefs->value(QString::fromLatin1(kKeyPreferredQn), 80).toInt();
+    preferredQn_ = QList<int>{16, 32, 64, 74, 80, 112, 116, 120, 125, 126, 127}.contains(savedQn)
+                       ? savedQn : 80;
 
     systemMedia_ = new SystemMediaControls(this);
     connect(systemMedia_, &SystemMediaControls::commandRequested, this,
@@ -199,6 +205,10 @@ void PlayerController::attachMediaWindow(QWindow *window) {
         });
     }
     syncSystemMedia();
+}
+
+void PlayerController::setFullscreenWindow(QWindow *window, bool fullscreen) {
+    PlayerFullscreen::setBorderless(window, fullscreen);
 }
 
 void PlayerController::syncSystemMedia() {
@@ -837,20 +847,39 @@ void PlayerController::resolveEntry(const ResolveRequest &request) {
         return;
     }
 
-    // archive:aid → 分 P 1 的 cid → DASH
+    // archive:aid → 分 P 列表 → DASH
     const qint64 aid = resolved.entry.value("oid").toLongLong();
     qint64 cid = resolved.entry.value("cid").toLongLong();
-    if (cid <= 0) {
-        try {
-            cid = PlayerApi::getFirstPage(api, aid, resolved.cookie).cid;
-        } catch (const std::exception &e) {
+    try {
+        const QList<PlayerApi::VideoPage> pages = PlayerApi::getVideoPages(api, aid, resolved.cookie);
+        if (cid <= 0) cid = pages.constFirst().cid;
+        QVariantList pageList;
+        for (const PlayerApi::VideoPage &page : pages) {
+            pageList.append(QVariantMap{{"cid", page.cid}, {"page", page.page},
+                                        {"part", page.part}});
+        }
+        const int pageGeneration = resolved.generation;
+        QMetaObject::invokeMethod(this, [this, pageList, cid, pageGeneration] {
+            if (pageGeneration != generation_) return;
+            videoPages_ = pageList;
+            currentPage_ = -1;
+            for (int i = 0; i < videoPages_.size(); ++i) {
+                if (videoPages_.at(i).toMap().value("cid").toLongLong() == cid) {
+                    currentPage_ = i;
+                    break;
+                }
+            }
+            emit videoPagesChanged();
+        }, Qt::QueuedConnection);
+    } catch (const std::exception &e) {
+        if (cid <= 0) {
             handleResolveFailed(resolved, QString::fromUtf8(e.what()));
             return;
         }
-        if (cid <= 0) {
-            handleResolveFailed(resolved, Loc::get("未获取到视频分 P 信息"));
-            return;
-        }
+    }
+    if (cid <= 0) {
+        handleResolveFailed(resolved, Loc::get("未获取到视频分 P 信息"));
+        return;
     }
     resolved.cid = cid;
     try {
@@ -1293,6 +1322,9 @@ void PlayerController::playByIndex(int index) {
     endedAwaitingSwitch_ = false;
 
     currentIndex_ = index;
+    videoPages_.clear();
+    currentPage_ = -1;
+    emit videoPagesChanged();
     currentKey_ = entry.value("videoKey").toString();
     currentTitle_ = entry.value("title").toString();
     emit currentChanged();
@@ -1435,11 +1467,36 @@ void PlayerController::setKeepSpeed(bool keep) {
 
 void PlayerController::setQuality(int qn) {
     if (localMedia()) return;
+    if (qn <= 0) return;
     preferredQn_ = qn;
+    AppPreferences::instance()->setValue(QString::fromLatin1(kKeyPreferredQn), qn);
     if (currentIndex_ < 0) return;
     // 保位换源:不属于条目切换,不触发停播序列/恢复点/心跳;从当前播放位置继续
     const QVariantMap entry = currentEntry();
     if (entry.isEmpty()) return;
+    loading_ = true;
+    emit loadingChanged();
+    startPlayback(entry, position_, true);
+}
+
+void PlayerController::setPage(int index) {
+    if (localMedia() || seasonMode_ || index < 0 || index >= videoPages_.size()) return;
+    const QVariantMap page = videoPages_.at(index).toMap();
+    const qint64 cid = page.value("cid").toLongLong();
+    if (cid <= 0 || currentIndex_ < 0 || cid == currentCid_) return;
+    QVariantMap entry = currentEntry();
+    entry.insert("cid", cid);
+    const QString part = page.value("part").toString();
+    if (!part.isEmpty()) entry.insert("title", part);
+    list_[currentIndex_] = entry;
+    currentCid_ = cid;
+    currentTitle_ = entry.value("title").toString();
+    currentPage_ = index;
+    emit playlistChanged();
+    emit currentChanged();
+    emit videoPagesChanged();
+    resetSubtitles();
+    onlineDanmaku_.reset();
     loading_ = true;
     emit loadingChanged();
     startPlayback(entry, position_, true);

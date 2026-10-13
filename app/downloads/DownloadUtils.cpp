@@ -124,7 +124,7 @@ QString siblingDanmaku(const QString &path) {
 QVariantMap safeMetadata(const QVariantMap &entry) {
     QVariantMap clean;
     // Deliberate allowlist: never persist rawJson, cookies or signed media URLs.
-    for (const char *key : {"title", "authorName", "business", "bvid", "duration", "part", "regionalApiProxy"})
+    for (const char *key : {"title", "authorName", "business", "bvid", "videoKey", "duration", "part", "regionalApiProxy"})
         if (entry.contains(key)) clean.insert(key, entry.value(key));
     for (const char *key : {"oid", "cid", "epId", "authorMid"})
         clean.insert(key, QString::number(entry.value(key).toLongLong()));

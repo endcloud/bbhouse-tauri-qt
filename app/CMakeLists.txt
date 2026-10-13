@@ -63,6 +63,7 @@ qt_add_executable(bbhouse-qt
         player/DanmakuLayout.h player/DanmakuLayout.cpp
         player/SubtitleTimeline.h
         player/PlayerController.h player/PlayerController.cpp
+        player/FullscreenWindow.h player/FullscreenWindow.cpp
         player/SystemMediaBackend.h
         player/SystemMediaControls.h player/SystemMediaControls.cpp
         player/ScreenshotPath.h
@@ -101,7 +102,7 @@ if(WIN32)
         set_property(TARGET bbhouse-history-service PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
     add_dependencies(bbhouse-qt bbhouse-history-service)
-    target_link_libraries(bbhouse-qt PRIVATE shell32)
+    target_link_libraries(bbhouse-qt PRIVATE shell32 xinput)
 endif()
 
 # 原生系统媒体控制；Windows 用 WinRT ABI，同时兼容 MinGW/MSVC。
@@ -353,6 +354,7 @@ endif()
 add_executable(api-regression-test EXCLUDE_FROM_ALL
         ../tools/api_regression_test.cpp
         core/BilibiliApiClient.h core/BilibiliApiClient.cpp
+        core/HistoryApi.h core/HistoryApi.cpp
         core/PlayerApi.h core/PlayerApi.cpp
         core/WbiSigner.h core/WbiSigner.cpp)
 target_include_directories(api-regression-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -398,7 +400,7 @@ add_executable(screenshot-test EXCLUDE_FROM_ALL ../tools/screenshot_test.cpp
         player/ScreenshotWriter.h player/ScreenshotWriter.cpp
         player/MpvClient.h player/MpvClient.cpp player/MpvLib.h player/MpvLib.cpp)
 target_include_directories(screenshot-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/3rd/mpv/include)
-target_link_libraries(screenshot-test PRIVATE Qt6::Gui)
+target_link_libraries(screenshot-test PRIVATE Qt6::Gui Qt6::Network)
 add_test(NAME screenshot COMMAND screenshot-test)
 set_tests_properties(screenshot PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 bbhouse_copy_mpv_dll(screenshot-test)
@@ -590,6 +592,8 @@ add_test(NAME live-controller COMMAND live-controller-test)
 
 add_executable(live-player-test EXCLUDE_FROM_ALL ../tools/live_player_test.cpp
         player/LivePlayerController.h player/LivePlayerController.cpp
+        player/FullscreenWindow.h player/FullscreenWindow.cpp
+        player/ScreenshotWriter.h player/ScreenshotWriter.cpp
         player/MpvVideoItem.h player/MpvVideoItem.cpp
         player/MpvClient.h player/MpvClient.cpp player/MpvLib.h player/MpvLib.cpp
         core/LiveApi.h core/LiveApi.cpp core/BilibiliApiClient.h core/BilibiliApiClient.cpp
@@ -681,6 +685,7 @@ add_test(NAME history-service-worker COMMAND history-service-worker-test)
 # 本地播放：隔离 Cookie/数据路径，真实 libmpv，不访问在线 API。
 add_executable(local-player-test EXCLUDE_FROM_ALL ../tools/local_player_test.cpp
         player/PlayerController.h player/PlayerController.cpp
+        player/FullscreenWindow.h player/FullscreenWindow.cpp
         player/MpvVideoItem.h player/MpvVideoItem.cpp
         player/MpvClient.h player/MpvClient.cpp player/MpvLib.h player/MpvLib.cpp
         player/DanmakuEngine.h player/DanmakuEngine.cpp
@@ -801,4 +806,4 @@ if (APPLE)
 endif ()
 
 # 应用显示版本与项目/发布包保持一致。
-target_compile_definitions(bbhouse-qt PRIVATE BBHOUSE_APP_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(bbhouse-qt PRIVATE BBHOUSE_APP_VERSION="${PROJECT_VERSION}" BBHOUSE_VERSION_CODE=${BBHOUSE_VERSION_CODE})

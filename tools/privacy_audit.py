@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only repository audit. Never print matched credentials or file contents."""
 import argparse
+import hashlib
 import re
 import subprocess
 from pathlib import Path
@@ -26,6 +27,34 @@ PATTERNS = {
     "sqlite-database": re.compile(rb"\ASQLite format 3\x00"),
 }
 
+# Public localhost-only HTTPS regression fixture, never a production identity.
+# Hash the complete PEM, including its final LF; do not exempt the whole file.
+PUBLIC_TEST_KEYS = {
+    "app/core/MediaHttpsSmoke.h": {
+        "3f29e3fa200675a1cfb6e9f79324ec3ada17338fbff00eb0a089d073f2864034",
+    },
+}
+COMPLETE_RSA_KEY = re.compile(
+    rb"-----BEGIN " rb"RSA PRIVATE KEY-----\n"
+    rb"(?:[A-Za-z0-9+/=]+\n)+"
+    rb"-----END RSA PRIVATE KEY-----\n"
+)
+
+
+def scan(path, data):
+    """Return finding categories, allowing only exact public test key bytes."""
+    allowed = PUBLIC_TEST_KEYS.get(path, set())
+    private_key_data = data
+    if allowed:
+        private_key_data = COMPLETE_RSA_KEY.sub(
+            lambda match: b"" if hashlib.sha256(match.group()).hexdigest() in allowed
+            else match.group(), data
+        )
+    return {
+        label for label, pattern in PATTERNS.items()
+        if pattern.search(private_key_data if label == "private-key" else data)
+    }
+
 
 def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT)
@@ -38,9 +67,8 @@ def main():
     findings = set()
 
     def inspect(path, data, revision):
-        for label, pattern in PATTERNS.items():
-            if pattern.search(data):
-                findings.add((label, path, revision))
+        for label in scan(path, data):
+            findings.add((label, path, revision))
 
     files = git("ls-files", "-z").decode().split("\0")[:-1]
     for path in files:

@@ -20,6 +20,9 @@ FluWindow {
 
     // 当前页 key:页面宿主切换 + 搜索框可见性条件
     property string currentPage: ""
+    // 轻量统一路由栈：主导航页是根路由，个人空间等二级页通过 push/pop
+    // 进入和返回，后续页面可复用同一套返回行为。
+    property var routeStack: []
     readonly property var pageKeys: ["dynamics", "special", "watchlater", "bangumi", "live", "online", "local", "settings", "popular", "downloads", "about"]
     // 标题栏搜索框只在卡片页呈现(动态/特别关注/稍后再看/番剧/在线历史/本地历史;
     // 特别关注三档均支持标题/UP 名称的当前页投影,special-follow-ui 搜索契约)
@@ -57,6 +60,25 @@ FluWindow {
         // briefly recreate an expired previous page when leaving the space.
         currentPage = key
         spaceVisible = false
+        routeStack = []
+    }
+
+    function pushRoute(route) {
+        var next = routeStack.slice(0)
+        next.push(route)
+        routeStack = next
+    }
+
+    function popRoute() {
+        if (routeStack.length === 0) {
+            spaceVisible = false
+            return
+        }
+        var next = routeStack.slice(0)
+        var route = next.pop()
+        routeStack = next
+        if (route && route.page) currentPage = route.page
+        spaceVisible = false
     }
 
     function openUserSpace(mid, name, faceUrl) {
@@ -65,6 +87,7 @@ FluWindow {
         // Same author within their space is already the current destination.
         if (spaceVisible && UserSpaceController.profileMid === String(mid)) return
         var changed = UserSpaceController.profileMid !== String(mid)
+        if (!spaceVisible) pushRoute({page: currentPage})
         UserSpaceController.openSpace(mid, name, faceUrl)
         if (changed && space_loader.item) space_loader.item.resetView()
         spaceVisible = true
@@ -73,13 +96,36 @@ FluWindow {
     function returnFromSpace() {
         if (!spaceVisible) return
         finishSearch()
-        spaceVisible = false
+        popRoute()
     }
 
     Connections {
         target: AppController
         function onUserSpaceRequested(mid, name, faceUrl) {
             window.openUserSpace(mid, name, faceUrl)
+        }
+        function onBackRequested() {
+            if (window.spaceVisible) window.returnFromSpace()
+        }
+        function onGamepadButtonPressed(button) {
+            // Xbox B/Back follows the same route semantics as mouse side-back.
+            if ((button === 1 || button === 5) && window.spaceVisible)
+                window.returnFromSpace()
+        }
+    }
+    FluContentDialog {
+        id: update_dialog
+        title: qsTr("发现新版本")
+        message: qsTr("检测到可用更新（版本码 %1）。是否前往更新？").arg(AppController.remoteVersionCode)
+        buttonFlags: FluContentDialogType.NegativeButton | FluContentDialogType.PositiveButton
+        negativeText: qsTr("稍后")
+        positiveText: qsTr("前往更新")
+        onPositiveClicked: Qt.openUrlExternally(AppController.updateUrl)
+    }
+    Connections {
+        target: AppController
+        function onUpdateAvailableChanged() {
+            if (AppController.updateAvailable) update_dialog.open()
         }
     }
     Connections {
@@ -108,6 +154,8 @@ FluWindow {
         // 稍后登录进入本地媒体库，不创建默认动态页或发出账号请求。
         nav_view.setCurrentIndex(LoginController.needsLogin ? 9 : 0)
         smokeNavigate()
+        if (AppController.updateAvailable)
+            Qt.callLater(function() { update_dialog.open() })
     }
 
     appBar: FluAppBar {
@@ -134,8 +182,31 @@ FluWindow {
             }
             iconSource: FluentIcons.GlobalNavButton
             iconSize: 15
+            visible: !window.spaceVisible
             onClicked: {
                 window.navExpanded = !window.navExpanded
+            }
+        }
+
+        FluIconButton {
+            id: btn_space_back
+
+            width: 38
+            height: 38
+            anchors {
+                left: parent.left
+                leftMargin: 5
+                verticalCenter: parent.verticalCenter
+            }
+            visible: window.spaceVisible
+            iconSource: FluentIcons.ChevronLeft
+            iconSize: 15
+            Accessible.name: qsTr("返回上一页")
+            onClicked: window.returnFromSpace()
+            FluTooltip {
+                text: qsTr("返回上一页")
+                visible: btn_space_back.hovered
+                delay: 300
             }
         }
 
@@ -154,6 +225,7 @@ FluWindow {
         Component.onCompleted: {
             if (window.useSystemAppBar) return  // 系统标题栏:无 frameless 命中托管
             window.setHitTestVisible(btn_nav_toggle)
+            window.setHitTestVisible(btn_space_back)
             window.setHitTestVisible(search_box)
         }
     }
@@ -174,6 +246,7 @@ FluWindow {
             height: 38
             iconSource: FluentIcons.GlobalNavButton
             iconSize: 15
+            visible: !window.spaceVisible
             anchors {
                 left: parent.left
                 leftMargin: 5
@@ -182,6 +255,21 @@ FluWindow {
             onClicked: {
                 window.navExpanded = !window.navExpanded
             }
+        }
+        FluIconButton {
+            id: btn_space_back_mac
+            width: 38
+            height: 38
+            iconSource: FluentIcons.ChevronLeft
+            iconSize: 15
+            visible: window.spaceVisible
+            anchors {
+                left: parent.left
+                leftMargin: 5
+                verticalCenter: parent.verticalCenter
+            }
+            Accessible.name: qsTr("返回上一页")
+            onClicked: window.returnFromSpace()
         }
         PageSearchBox {
             id: search_box_mac
@@ -395,7 +483,6 @@ FluWindow {
         onExpired: UserSpaceController.releasePageCache()
         visible: window.spaceVisible
         sourceComponent: UserSpacePage {
-            onBackRequested: window.returnFromSpace()
         }
     }
 

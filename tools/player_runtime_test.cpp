@@ -18,6 +18,7 @@
 #include "player/MpvClient.h"
 #include "player/MpvLib.h"
 #include "player/DanmakuEngine.h"
+#include "core/MediaHttpsSmoke.h"
 #include <QJsonDocument>
 
 namespace {
@@ -315,12 +316,22 @@ int main(int argc, char **argv) {
     client->stop();
     auto retained = client->sharedHandle();
     std::weak_ptr<mpv_handle> weak = retained;
+#ifdef Q_OS_WIN
+    const QString retainedCa = client->getPropertyString("options/tls-ca-file");
+    check(!retainedCa.isEmpty() && QFile::exists(retainedCa), "native CA bundle exists during playback");
+#endif
     delete client;
     double speed = 0;
     check(!weak.expired() && lib->getProperty(retained.get(), "speed", MPV_FORMAT_DOUBLE, &speed) >= 0,
           "renderer handle ownership survives QObject teardown");
+#ifdef Q_OS_WIN
+    check(QFile::exists(retainedCa), "native CA bundle survives QObject while renderer retains handle");
+#endif
     retained.reset();
     check(weak.expired(), "last owner releases mpv handle");
+#ifdef Q_OS_WIN
+    check(!QFile::exists(retainedCa), "last handle owner removes temporary native CA bundle");
+#endif
 
     auto *transientClient = MpvClient::create();
     check(transientClient != nullptr, "create transient client for queued completion lifetime");
@@ -332,6 +343,8 @@ int main(int argc, char **argv) {
         check(!calledAfterDestruction,
               "queued command completion is cancelled when client dies before its context");
     }
+
+    check(runMediaHttpsSmoke(temp.path()), "real HTTPS media verifies certificates and bypasses proxies");
 
     DanmakuEngine engine;
     engine.setPlayback(1, 1, true, true);

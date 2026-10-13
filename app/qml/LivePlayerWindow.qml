@@ -50,12 +50,14 @@ FluWindow {
             appBar.visible = true
             appBar.height = previousBarHeight
             visibility = previousVisibility
+            Qt.callLater(function() { LivePlayerController.setFullscreenWindow(window, false) })
         } else {
             previousVisibility = visibility === Window.Maximized ? Window.Maximized : Window.Windowed
             previousBarHeight = appBar.height
             appBar.visible = false
             appBar.height = 0
-            visibility = Window.FullScreen
+            LivePlayerController.setFullscreenWindow(window, true)
+            window.showFullScreen()
         }
         finishAction()
     }
@@ -91,6 +93,23 @@ FluWindow {
     Connections {
         target: LivePlayerController
         function onRoomChanged() { window.finishAction() }
+    }
+    Connections {
+        target: AppController
+        function onBackRequested() {
+            if (window.fullscreenActive) window.toggleFullscreen()
+            else window.close()
+        }
+        function onGamepadButtonPressed(button) {
+            switch (button) {
+            case 0: LivePlayerController.togglePlayPause(); break // A
+            case 1: if (window.fullscreenActive) window.toggleFullscreen(); else window.close(); break // B
+            case 4: window.toggleFullscreen(); break // Start
+            case 6: LivePlayerController.setVolumePercent(LivePlayerController.volumePercent + 5); break
+            case 7: LivePlayerController.setVolumePercent(LivePlayerController.volumePercent - 5); break
+            }
+            if (button <= 7) window.finishAction()
+        }
     }
 
     Item {
@@ -320,6 +339,19 @@ FluWindow {
                             onClicked: { window.pokeControls(); quality_menu.open() }
                         }
                         PlayerControlButton {
+                            iconSource: LivePlayerController.recording ? FluentIcons.Stop : FluentIcons.Record
+                            active: LivePlayerController.recording
+                            contentDescription: LivePlayerController.recording ? qsTr("停止录制") : qsTr("录制")
+                            enabled: LivePlayerController.roomId !== "" && !LivePlayerController.loading
+                            onClicked: { LivePlayerController.toggleRecording(); window.finishAction() }
+                        }
+                        PlayerControlButton {
+                            iconSource: FluentIcons.Camera
+                            contentDescription: qsTr("截图")
+                            enabled: LivePlayerController.roomId !== "" && !LivePlayerController.loading
+                            onClicked: { LivePlayerController.screenshot(); window.finishAction() }
+                        }
+                        PlayerControlButton {
                             iconSource: window.fullscreenActive ? FluentIcons.BackToWindow : FluentIcons.FullScreen
                             contentDescription: window.fullscreenActive ? qsTr("退出全屏") : qsTr("全屏")
                             onClicked: window.toggleFullscreen()
@@ -382,5 +414,12 @@ FluWindow {
                 }
             }
         }
+    }
+    Connections {
+        target: LivePlayerController
+        function onRecordingSaved(path) { window.showSuccess(qsTr("录制已保存到 %1").arg(path), 4000) }
+        function onRecordingFailed(message) { window.showError(message, 10000) }
+        function onScreenshotSaved(path) { window.showSuccess(qsTr("截图已保存到 %1").arg(path), 4000) }
+        function onScreenshotFailed(message) { window.showError(message, 4000) }
     }
 }

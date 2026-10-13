@@ -1,11 +1,29 @@
 #include "player/LivePlayerController.h"
 
+#include "player/FullscreenWindow.h"
+
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDebug>
+#include <QFutureWatcher>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QStandardPaths>
+#include <QSettings>
+#include <QTemporaryDir>
+#include <QTemporaryFile>
+#include <QPromise>
 #include <QRegularExpression>
 #include <QThreadPool>
+#include <QThread>
+#include <QElapsedTimer>
+#include <QtEndian>
 #include "core/ApiErrors.h"
 #include "core/AppPaths.h"
 #include "core/BilibiliApiClient.h"
+#include "player/ScreenshotPath.h"
+#include "player/ScreenshotWriter.h"
 
 namespace {
 constexpr int kCandidateTimeoutMs = 12000;
@@ -13,9 +31,14 @@ constexpr int kBufferTimeoutMs = 20000;
 }
 
 LivePlayerController::LivePlayerController(QObject *parent, Resolver resolver,
-                                         ClientFactory clientFactory)
+                                         ClientFactory clientFactory,
+                                         RecordingPathFactory recordingPathFactory)
     : QObject(parent), resolver_(std::move(resolver)),
-      clientFactory_(std::move(clientFactory)) {
+      clientFactory_(std::move(clientFactory)),
+      recordingPathFactory_(std::move(recordingPathFactory)) {
+    screenshotPool_.setMaxThreadCount(1);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+            this, &LivePlayerController::closeRequested);
     if (!resolver_) resolver_ = [](const QString &roomId, int qn) {
         const QString cookie = BilibiliApiClient::readCookieFromFile(AppPaths::cookiePath());
         return LiveApi::fetchPlayInfo(*BilibiliApiClient::instance(), cookie, roomId, qn);
@@ -32,6 +55,123 @@ LivePlayerController::LivePlayerController(QObject *parent, Resolver resolver,
 LivePlayerController::~LivePlayerController() {
     closeRequested();
     delete videoItem_;
+}
+
+namespace {
+QString liveSafeName(QString value) {
+    value.replace(QRegularExpression(QStringLiteral("[<>:\"/\\\\|?*\\x00-\\x1f]")), "_");
+    value = value.trimmed().left(80);
+    while (value.endsWith('.') || value.endsWith(' ')) value.chop(1);
+    if (value.isEmpty() || value == QStringLiteral(".") || value == QStringLiteral(".."))
+        value = QStringLiteral("up");
+    if (QRegularExpression(QStringLiteral("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|$)"),
+                            QRegularExpression::CaseInsensitiveOption).match(value).hasMatch())
+        value.prepend('_');
+    return value;
+}
+struct LiveSessionPaths {
+    QString stem;
+    QString directory;
+};
+LiveSessionPaths liveSessionPaths(const QString &root, const QString &author) {
+    const QString stamp = QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd_HHmmss"));
+    QString safeAuthor = liveSafeName(author);
+    if (safeAuthor == QStringLiteral("live") && author.trimmed().isEmpty()) safeAuthor = QStringLiteral("up");
+    // Keep both the directory and the media filename short and stable. The
+    // live title is display metadata and must not become part of the path.
+    const QString stem = QStringLiteral("live_%1_%2").arg(safeAuthor.left(48), stamp);
+    const QString directory = QDir(root).filePath(QStringLiteral("live/") + stem);
+    QDir().mkpath(directory);
+    return {stem, directory};
+}
+QString liveRecordingPath(const QString &root, const QString &author) {
+    const QString stamp = QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd_HHmmss_zzz"));
+    const QString safeAuthor = liveSafeName(author);
+    const QString stem = QStringLiteral("live_%1_%2").arg(safeAuthor.left(48), stamp);
+    const QString directory = QDir(root).filePath(QStringLiteral("live"));
+    QString path = QDir(directory).filePath(stem + QStringLiteral(".mp4"));
+    for (int suffix = 1; QFileInfo::exists(path); ++suffix)
+        path = QDir(directory).filePath(stem + QStringLiteral("_") + QString::number(suffix)
+                                        + QStringLiteral(".mp4"));
+    return path;
+}
+QString configuredDownloadDirectory() {
+    QSettings settings(QDir(AppPaths::dataDir()).filePath(QStringLiteral("downloads.ini")),
+                       QSettings::IniFormat);
+    QString path = settings.value(QStringLiteral("download/directory")).toString();
+    if (path.isEmpty()) path = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (path.isEmpty()) path = QDir::home().filePath(QStringLiteral("Downloads"));
+    return path;
+}
+
+QString recordingDirectoryError(const QString &directory) {
+    const QFileInfo info(directory);
+    if (!info.exists() || !info.isDir()) {
+        return Loc::get("无法创建录制目录");
+    }
+
+    // QFileInfo::isWritable() is not reliable for all Windows directory
+    // providers. An actual temporary file checks the same write path mpv will
+    // use, and is removed immediately after the probe.
+    QTemporaryFile probe(QDir(directory).filePath(QStringLiteral(".bbhouse-record-XXXXXX")));
+    probe.setAutoRemove(true);
+    if (!probe.open()) {
+        return Loc::get("录制目录不可写：%1").arg(probe.errorString());
+    }
+    return {};
+}
+
+bool isCompleteMp4(QFile &file, qint64 fileSize) {
+    qint64 offset = 0;
+    bool hasFileType = false;
+    bool hasMovie = false;
+    bool hasMediaData = false;
+    while (offset < fileSize) {
+        if (fileSize - offset < 8 || !file.seek(offset)) return false;
+        const QByteArray base = file.read(8);
+        if (base.size() != 8) return false;
+        quint64 boxSize = qFromBigEndian<quint32>(reinterpret_cast<const uchar *>(base.constData()));
+        const QByteArray type = base.mid(4, 4);
+        quint64 headerSize = 8;
+        if (boxSize == 1) {
+            const QByteArray extended = file.read(8);
+            if (extended.size() != 8) return false;
+            boxSize = qFromBigEndian<quint64>(reinterpret_cast<const uchar *>(extended.constData()));
+            headerSize = 16;
+        } else if (boxSize == 0) {
+            boxSize = static_cast<quint64>(fileSize - offset);
+        }
+        if (boxSize < headerSize || boxSize > static_cast<quint64>(fileSize - offset)) return false;
+        if (type == QByteArrayLiteral("ftyp")) hasFileType = true;
+        else if (type == QByteArrayLiteral("moov")) hasMovie = boxSize > headerSize;
+        else if (type == QByteArrayLiteral("mdat")) hasMediaData |= boxSize > headerSize;
+        offset += static_cast<qint64>(boxSize);
+    }
+    return offset == fileSize && hasFileType && hasMovie && hasMediaData;
+}
+
+QString recordingIntegrityError(const QString &path) {
+    const QFileInfo info(path);
+    if (!info.exists() || !info.isFile()) return Loc::get("录制文件未生成");
+    if (info.size() < 16) return Loc::get("录制文件为空或过短");
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return Loc::get("录制文件无法读取：%1").arg(file.errorString());
+    }
+    const QByteArray header = file.read(12);
+    if (header.size() < 12) return Loc::get("录制文件头不完整");
+    if (header.left(4) == QByteArrayLiteral("RIFF")
+        && header.mid(8, 4) == QByteArrayLiteral("WAVE")) {
+        const quint32 riffSize = qFromLittleEndian<quint32>(
+            reinterpret_cast<const uchar *>(header.constData() + 4));
+        if (static_cast<quint64>(riffSize) + 8 != static_cast<quint64>(info.size()))
+            return Loc::get("WAV 录制文件长度标记不完整");
+        return {};
+    }
+    if (!isCompleteMp4(file, info.size())) return Loc::get("MP4 文件结构不完整或缺少索引/媒体数据");
+    return {};
+}
 }
 
 QString LivePlayerController::statusText() const {
@@ -85,6 +225,7 @@ void LivePlayerController::setQuality(int qn) {
 }
 
 void LivePlayerController::resolve() {
+    finishRecording(true);
     const quint64 generation = ++generation_;
     ++candidateSerial_;
     watchdog_.stop();
@@ -208,6 +349,7 @@ void LivePlayerController::queueNextCandidate() {
 }
 
 void LivePlayerController::nextCandidate() {
+    finishRecording(true);
     watchdog_.stop();
     ++candidateSerial_;
     if (++candidateIndex_ >= candidates_.size()) {
@@ -225,6 +367,7 @@ void LivePlayerController::nextCandidate() {
 }
 
 void LivePlayerController::fail(const QString &message) {
+    finishRecording(true);
     watchdog_.stop();
     ++candidateSerial_;
     mediaActive_ = false;
@@ -267,6 +410,7 @@ void LivePlayerController::releaseKernel() {
 }
 
 void LivePlayerController::closeRequested() {
+    finishRecording(false);
     ++generation_;
     ++candidateSerial_;
     watchdog_.stop();
@@ -289,4 +433,128 @@ void LivePlayerController::closeRequested() {
     emit roomChanged();
     emit qualitiesChanged();
     emit stateChanged();
+}
+
+void LivePlayerController::toggleRecording() {
+    if (!client_ || !mediaActive_ || loading_ || roomId_.isEmpty()) return;
+    if (recording_) {
+        finishRecording(true);
+        return;
+    }
+    const QString root = configuredDownloadDirectory();
+    const QString path = recordingPathFactory_ ? recordingPathFactory_(root, authorName_)
+                                               : liveRecordingPath(root, authorName_);
+    if (path.isEmpty()) {
+        emit recordingFailed(Loc::get("直播录制启动失败：无法生成目标文件路径"));
+        return;
+    }
+    const QString directory = QFileInfo(path).absolutePath();
+    if (!QDir().mkpath(directory)) {
+        emit recordingFailed(Loc::get("直播录制启动失败：无法创建录制目录\n目录：%1")
+                                 .arg(QDir::toNativeSeparators(directory)));
+        return;
+    }
+    const QString directoryError = recordingDirectoryError(directory);
+    if (!directoryError.isEmpty()) {
+        emit recordingFailed(Loc::get("直播录制启动失败：%1\n目录：%2")
+                                 .arg(directoryError, QDir::toNativeSeparators(directory)));
+        return;
+    }
+    // mpv exposes recording as the runtime stream-record property. Use
+    // forward slashes for the value passed into mpv; display the native path
+    // in diagnostics and save notifications.
+    const int result = client_->setPropertyString(QStringLiteral("stream-record"),
+                                                   QDir::fromNativeSeparators(path));
+    if (result < 0) {
+        emit recordingFailed(Loc::get("直播录制启动失败：mpv stream-record 返回错误码 %1（%2）\n目录：%3\n目标文件：%4")
+                                 .arg(result)
+                                 .arg(MpvClient::errorString(result))
+                                 .arg(QDir::toNativeSeparators(directory))
+                                 .arg(QDir::toNativeSeparators(path)));
+        return;
+    }
+    recordingPath_ = path;
+    recording_ = true;
+    emit recordingChanged();
+}
+
+bool LivePlayerController::finishRecording(bool notify) {
+    if (!recording_) return true;
+    const QString path = recordingPath_;
+    const int result = client_ ? client_->setPropertyString(QStringLiteral("stream-record"), QString())
+                               : MPV_ERROR_UNINITIALIZED;
+    recording_ = false;
+    recordingPath_.clear();
+    emit recordingChanged();
+
+    // stream-record updates are consumed by mpv's demuxer thread. A successful
+    // property write does not mean the muxer has already flushed its trailer.
+    const QPointer<LivePlayerController> guard(this);
+    screenshotPool_.start([guard, path, result, notify] {
+        QString error;
+        if (result < 0) {
+            error = Loc::get("mpv 返回错误码 %1（%2）")
+                        .arg(result).arg(MpvClient::errorString(result));
+        } else {
+            QElapsedTimer timer;
+            timer.start();
+            do {
+                QThread::msleep(50);
+                error = recordingIntegrityError(path);
+            } while (!error.isEmpty() && timer.elapsed() < 5000);
+        }
+        if (!error.isEmpty())
+            qWarning().noquote() << "直播录制收尾失败：" << error
+                                 << "文件：" << QDir::toNativeSeparators(path);
+        if (notify) QMetaObject::invokeMethod(QCoreApplication::instance(), [guard, path, error] {
+            if (!guard) return;
+            if (error.isEmpty()) emit guard->recordingSaved(path);
+            else emit guard->recordingFailed(Loc::get("直播录制文件校验失败：%1\n文件：%2")
+                                                 .arg(error, QDir::toNativeSeparators(path)));
+        }, Qt::QueuedConnection);
+    });
+    return result >= 0;
+}
+
+void LivePlayerController::screenshot() {
+    if (!client_ || !mediaActive_) {
+        emit screenshotFailed(Loc::get("当前没有可截图的直播画面"));
+        return;
+    }
+    // Screenshots retain their short live_<anchor>_<timestamp> session layout.
+    const QString root = AppPaths::dataDir() + QStringLiteral("/Screenshots");
+    const LiveSessionPaths session = liveSessionPaths(root, authorName_);
+    const QString path = ScreenshotPath::next(session.directory, session.stem);
+    auto capture = std::make_shared<QTemporaryDir>(QDir::tempPath() + QStringLiteral("/bbhouse-live-capture-XXXXXX"));
+    if (!capture->isValid()) {
+        emit screenshotFailed(Loc::get("截图失败"));
+        return;
+    }
+    const QString rawPath = capture->filePath(QStringLiteral("frame.png"));
+    client_->commandAsync({QStringLiteral("screenshot-to-file"), rawPath, QStringLiteral("video")}, this,
+                          [this, capture, rawPath, path](int result) {
+        if (result < 0 || !QFileInfo::exists(rawPath)) {
+            emit screenshotFailed(Loc::get("截图失败"));
+            return;
+        }
+        auto promise = std::make_shared<QPromise<ScreenshotWriter::Result>>();
+        promise->start();
+        auto *watcher = new QFutureWatcher<ScreenshotWriter::Result>(this);
+        connect(watcher, &QFutureWatcher<ScreenshotWriter::Result>::finished, this,
+                [this, watcher, capture] {
+            const auto saved = watcher->result();
+            watcher->deleteLater();
+            if (saved.error.isEmpty()) emit screenshotSaved(saved.path);
+            else emit screenshotFailed(Loc::get("截图失败") + QStringLiteral(": ") + saved.error);
+        });
+        watcher->setFuture(promise->future());
+        screenshotPool_.start([promise, rawPath, path]() mutable {
+            promise->addResult(ScreenshotWriter::save(rawPath, path));
+            promise->finish();
+        });
+    });
+}
+
+void LivePlayerController::setFullscreenWindow(QWindow *window, bool fullscreen) {
+    PlayerFullscreen::setBorderless(window, fullscreen);
 }

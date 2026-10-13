@@ -39,10 +39,13 @@ int main(int argc, char **argv) {
             property real speed: 1
             property int volumePercent: 50
             property int currentQn: 80
+            property var videoPages: []
+            property int currentPage: -1
             property string preferCodec: "avc"
             property string qualityLabel: "1080P"
             property var qualities: []
             function playByIndex(index) { currentIndex = index }
+            function setPage(index) { currentPage = index }
         })", QUrl());
     std::unique_ptr<QObject> controller(mockComponent.create());
     if (!controller) { qCritical() << mockComponent.errors(); return 1; }
@@ -111,6 +114,38 @@ int main(int argc, char **argv) {
     check(delegateCount() < 50, "closing episode menu keeps delegates bounded");
     check(qmlWarnings == 0, "long-season controls emit no QML runtime warnings");
     check(timer.elapsed() < 2500, "long-season menu operations stay below multi-second freeze threshold");
+
+    controller->setProperty("seasonMode", false);
+    controller->setProperty("videoPages", QVariantList{
+        QVariantMap{{"cid", qint64(100)}, {"part", "片段一"}},
+        QVariantMap{{"cid", qint64(101)}, {"part", "片段二"}},
+    });
+    controller->setProperty("currentPage", 0);
+    settle();
+    auto *pageMenu = controls->findChild<QObject *>("playerPageMenu");
+    check(pageMenu != nullptr, "multi-part controls expose page menu");
+    if (pageMenu) {
+        QMetaObject::invokeMethod(pageMenu, "open");
+        settle();
+        auto *pageList = qvariant_cast<QQuickItem *>(pageMenu->property("contentItem"));
+        check(pageList && pageList->property("count").toInt() == 2,
+              "page menu exposes all parts");
+        if (pageList) {
+            pageList->setProperty("currentIndex", 1);
+            auto *pageContent = qvariant_cast<QQuickItem *>(pageList->property("contentItem"));
+            QObject *second = nullptr;
+            if (pageContent) {
+                for (auto *child : pageContent->childItems()) {
+                    if (child->property("index").toInt() == 1) { second = child; break; }
+                }
+            }
+            if (second) QMetaObject::invokeMethod(second, "triggered");
+            settle();
+            check(controller->property("currentPage").toInt() == 1,
+                  "page menu selection updates current part");
+        }
+        QMetaObject::invokeMethod(pageMenu, "close");
+    }
     qInfo() << "long-season menu elapsed ms" << timer.elapsed() << "delegates" << delegateCount();
     controls->setParentItem(nullptr);
     return failures ? 1 : 0;

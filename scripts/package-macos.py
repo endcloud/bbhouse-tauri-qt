@@ -353,7 +353,9 @@ def main():
     cache = (build / 'CMakeCache.txt').read_text()
     if 'CMAKE_BUILD_TYPE:STRING=Release' not in cache:
         raise RuntimeError('Only Release build products may be packaged')
-    version = re.search(r'project\(bbhouse-qt VERSION ([\d.]+)', (ROOT / 'CMakeLists.txt').read_text()).group(1)
+    project_config = (ROOT / 'CMakeLists.txt').read_text()
+    version = re.search(r'project\(bbhouse-qt VERSION ([\d.]+)', project_config).group(1)
+    version_code = re.search(r'set\(BBHOUSE_VERSION_CODE (\d+)\)', project_config).group(1)
     stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     release = ROOT / 'build/release' / f'BBHouse-macos-arm64_{stamp}'
     old_releases = [path for prefix in ('bbhouse-qt', 'BBHouse')
@@ -370,7 +372,7 @@ def main():
     plist = {'CFBundleExecutable': 'bbhouse-qt', 'CFBundleName': 'BBHouse',
              'CFBundleDisplayName': 'BBHouse', 'CFBundleIdentifier': 'io.github.endcloud.bbhouse-qt',
              'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': version,
-             'CFBundleVersion': version, 'CFBundleIconFile': APP_ICON.name,
+             'CFBundleVersion': version_code, 'CFBundleIconFile': APP_ICON.name,
              'NSHighResolutionCapable': True,
              'NSPrincipalClass': 'NSApplication'}
     (contents / 'Info.plist').write_bytes(plistlib.dumps(plist))
@@ -398,6 +400,7 @@ def main():
     commit = run('git', '-C', ROOT, 'rev-parse', 'HEAD').strip()
     dirty = bool(run('git', '-C', ROOT, 'status', '--porcelain').strip())
     description = (f'# BBHouse {version} — macOS arm64\n\n'
+                   f'版本代码（version-code）：{version_code}。\n\n'
                    f'将 BBHouse.app 拖入 Applications。要求 macOS {minimum} 或更新版本（Apple Silicon）。\n\n'
                    '本包包含 Qt、FluentUI、libmpv、aria2c、FFmpeg、curl 和动态依赖，无需 Homebrew 或 Qt SDK。'
                    '采用本地 ad-hoc 签名，未使用 Developer ID，未通过 Apple 公证。\n\n'
@@ -422,7 +425,9 @@ def main():
         run('codesign', '--force', '--sign', '-', '--timestamp=none', framework)
     run('codesign', '--force', '--sign', '-', '--timestamp=none', app)
     run('codesign', '--verify', '--deep', '--strict', '--verbose=2', app)
-    with tempfile.TemporaryDirectory(prefix='macos-deployment-', dir=ROOT / 'build') as temp:
+    temporary_root = ROOT / '.tmp'
+    temporary_root.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='macos-deployment-', dir=temporary_root) as temp:
         scratch = Path(temp)
         (release / 'deployment-smoke.log').write_text(smoke(app, scratch, qt))
         (release / 'download-smoke.log').write_text(download_smoke(app, scratch, qt))

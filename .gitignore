@@ -61,3 +61,6 @@ __pycache__/
 
 # Local code intelligence index
 .codegraph/
+
+# Task-local temporary files
+/.tmp/

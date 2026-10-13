@@ -6,6 +6,8 @@
 #include <QPointer>
 #include <QTimer>
 #include <QVariantMap>
+#include <QThreadPool>
+#include <QWindow>
 
 #include "core/LiveApi.h"
 #include "player/MpvVideoItem.h"
@@ -26,12 +28,15 @@ class LivePlayerController : public QObject {
     Q_PROPERTY(QString qualityLabel READ qualityLabel NOTIFY qualitiesChanged)
     Q_PROPERTY(int volumePercent READ volumePercent NOTIFY volumeChanged)
     Q_PROPERTY(MpvVideoItem *videoItem READ videoItem CONSTANT)
+    Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
 
 public:
     using Resolver = std::function<LivePlayInfo(const QString &, int)>;
     using ClientFactory = std::function<MpvClient *(QObject *)>;
+    using RecordingPathFactory = std::function<QString(const QString &, const QString &)>;
     explicit LivePlayerController(QObject *parent = nullptr, Resolver resolver = {},
-                                  ClientFactory clientFactory = {});
+                                  ClientFactory clientFactory = {},
+                                  RecordingPathFactory recordingPathFactory = {});
     ~LivePlayerController() override;
 
     QString roomId() const { return roomId_; }
@@ -47,6 +52,7 @@ public:
     QString qualityLabel() const;
     int volumePercent() const { return volume_; }
     MpvVideoItem *videoItem() const { return videoItem_; }
+    bool recording() const { return recording_; }
 
     // roomId crosses QML as a decimal string (never a QML 32-bit int).
     Q_INVOKABLE void openRoom(QVariantMap room);
@@ -55,12 +61,20 @@ public:
     Q_INVOKABLE void togglePlayPause();
     Q_INVOKABLE void setVolumePercent(int percent);
     Q_INVOKABLE void closeRequested();
+    Q_INVOKABLE void toggleRecording();
+    Q_INVOKABLE void screenshot();
+    Q_INVOKABLE void setFullscreenWindow(QWindow *window, bool fullscreen);
 
 signals:
     void roomChanged();
     void stateChanged();
     void qualitiesChanged();
     void volumeChanged();
+    void recordingChanged();
+    void recordingSaved(QString path);
+    void recordingFailed(QString message);
+    void screenshotSaved(QString path);
+    void screenshotFailed(QString message);
 
 private:
     void resolve();
@@ -71,9 +85,11 @@ private:
     void queueNextCandidate();
     void fail(const QString &message);
     void releaseKernel();
+    bool finishRecording(bool notify);
 
     Resolver resolver_;
     ClientFactory clientFactory_;
+    RecordingPathFactory recordingPathFactory_;
     MpvVideoItem *videoItem_ = nullptr;
     QPointer<MpvClient> client_;
     QTimer watchdog_;
@@ -91,6 +107,9 @@ private:
     bool paused_ = true;
     bool mediaActive_ = false;
     bool playbackStarted_ = false;
+    bool recording_ = false;
+    QString recordingPath_;
+    QThreadPool screenshotPool_;
 };
 
 #endif

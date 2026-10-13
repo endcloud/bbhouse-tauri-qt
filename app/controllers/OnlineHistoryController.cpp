@@ -40,6 +40,13 @@ void OnlineHistoryController::setSearchText(const QString &value) {
     if (searchText_ == value) return;
     searchText_ = value;
     emit searchTextChanged();
+    // 搜索使用官方接口,独立于 cursor 历史链;提交新关键词时从第 1 页开始。
+    if (busy_.load()) {
+        ++generation_;
+        pendingSearchRefresh_ = true;
+    } else if (loaded_ || !searchText_.trimmed().isEmpty()) {
+        refresh();
+    }
 }
 
 bool OnlineHistoryController::ended() const { return ended_; }
@@ -75,7 +82,8 @@ void OnlineHistoryController::startFetch(int generation) {
     emit busyChanged();
 
     const HistoryCursor cursor = cursor_;
-    runControllerTask(this, [this, generation, cursor] {
+    const QString keyword = searchText_.trimmed();
+    runControllerTask(this, [this, generation, cursor, keyword] {
         QList<HistoryItem> items;
         HistoryCursor nextCursor;
         bool hasCursor = false;
@@ -84,10 +92,21 @@ void OnlineHistoryController::startFetch(int generation) {
         try {
             const QString cookie =
                     BilibiliApiClient::readCookieFromFile(AppPaths::cookiePath());
-            const BilibiliHistoryPage page = HistoryApi::fetchPage(
-                    *BilibiliApiClient::instance(), cookie, cursor, kPageSize);
+            const bool searching = !keyword.isEmpty();
+            const BilibiliHistoryPage page = searching
+                ? HistoryApi::fetchSearchPage(*BilibiliApiClient::instance(), cookie,
+                                              keyword, cursor.business == QLatin1String("__search__")
+                                                  ? static_cast<int>(cursor.max) : 1)
+                : HistoryApi::fetchPage(*BilibiliApiClient::instance(), cookie, cursor, kPageSize);
             items = page.items;
-            nextCursor = page.cursor;
+            if (searching) {
+                nextCursor.max = (cursor.business == QLatin1String("__search__")
+                                  ? cursor.max + 1 : 2);
+                nextCursor.business = QStringLiteral("__search__");
+                nextCursor.pageSize = kPageSize;
+            } else {
+                nextCursor = page.cursor;
+            }
             hasCursor = true;
         } catch (const ApiUnauthorizedError &e) {
             unauthorized = true;
@@ -104,7 +123,18 @@ void OnlineHistoryController::startFetch(int generation) {
 void OnlineHistoryController::finishFetch(int generation, const QList<HistoryItem> &items,
                                           const HistoryCursor &nextCursor, bool hasCursor,
                                           const QString &error, bool unauthorized) {
-    if (generation != generation_) return;  // Expired page results cannot clear a newer busy state.
+    if (generation != generation_) {
+        // A search submitted while the previous request was in flight supersedes
+        // that response. Release the old busy gate, then fetch page one for the
+        // latest keyword.
+        busy_.store(false);
+        emit busyChanged();
+        if (pendingSearchRefresh_) {
+            pendingSearchRefresh_ = false;
+            refresh();
+        }
+        return;
+    }
     busy_.store(false);
     emit busyChanged();
 
@@ -204,6 +234,7 @@ QString OnlineHistoryController::cursorKey(const HistoryCursor &cursor) {
 
 void OnlineHistoryController::releasePageCache() {
     ++generation_;
+    pendingSearchRefresh_ = false;
     busy_ = false;
     ended_ = false;
     unauthorized_ = false;

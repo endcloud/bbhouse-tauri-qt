@@ -7,6 +7,8 @@
 #include <QUrl>
 #include <QScopeGuard>
 
+#include <algorithm>
+
 #include "core/ArcSearchApi.h"
 #include "core/ApiErrors.h"
 #include "core/AppPaths.h"
@@ -321,9 +323,15 @@ void SpecialFollowController::startSeedOrLoad() {
 
 void SpecialFollowController::finishUps(
         const QList<SpecialFollowStore::Entry> &members) {
+    // addedAt 是本地关注的稳定排序依据。旧快照仍按该字段归一化，
+    // 新增成员自然排在最前，避免文件写入顺序影响头像条和回落项。
+    QList<SpecialFollowStore::Entry> ordered = members;
+    std::stable_sort(ordered.begin(), ordered.end(), [](const auto &left, const auto &right) {
+        return left.addedAt > right.addedAt;
+    });
     ups_.clear();
-    ups_.reserve(members.size());
-    for (const SpecialFollowStore::Entry &entry : members) {
+    ups_.reserve(ordered.size());
+    for (const SpecialFollowStore::Entry &entry : ordered) {
         ups_.append(entryToItemMap(entry));
     }
     upsReady_ = true;

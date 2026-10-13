@@ -8,6 +8,10 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <psapi.h>
+#include <QDir>
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QTemporaryFile>
 #endif
 
 #include <mpv/client.h>
@@ -63,6 +67,29 @@ MpvClient *MpvClient::create(QObject *parent) {
     const int curlOption = lib->setOptionString(handle, "curl-enabled", "no");
     if (curlOption < 0 && curlOption != MPV_ERROR_OPTION_NOT_FOUND)
         qWarning() << "mpv option curl-enabled" << lib->errorString(curlOption);
+#ifdef Q_OS_WIN
+    // The bundled FFmpeg uses OpenSSL, which cannot read Windows' native trust
+    // store. Keep TLS verification and supply the same system CAs explicitly.
+    auto mediaCa = std::make_shared<QTemporaryFile>(
+        QDir::tempPath() + QStringLiteral("/bbhouse-media-ca-XXXXXX.pem"));
+    QByteArray caPem;
+    for (const auto &certificate : QSslConfiguration::systemCaCertificates())
+        caPem.append(certificate.toPem());
+    if (caPem.isEmpty() || !mediaCa->open()
+            || mediaCa->write(caPem) != caPem.size() || !mediaCa->flush()) {
+        createError = QStringLiteral("mpv HTTPS: cannot prepare Windows trusted certificates");
+        lib->terminateDestroy(handle);
+        return nullptr;
+    }
+    mediaCa->close();
+    const int caOption = lib->setOptionString(handle, "tls-ca-file", mediaCa->fileName().toUtf8());
+    const int verifyOption = lib->setOptionString(handle, "tls-verify", "yes");
+    if (caOption < 0 || verifyOption < 0) {
+        createError = QStringLiteral("mpv HTTPS: cannot configure verified Windows TLS");
+        lib->terminateDestroy(handle);
+        return nullptr;
+    }
+#endif
     setOpt("terminal", "no");
     setOpt("keep-open", "always");
     setOpt("loop-file", "no");
@@ -94,7 +121,16 @@ MpvClient *MpvClient::create(QObject *parent) {
 
     auto *client = new MpvClient(parent);
     const auto destroy = lib->terminateDestroy;
-    client->handle_ = std::shared_ptr<mpv_handle>(handle, [destroy](mpv_handle *value) { destroy(value); });
+    client->handle_ = std::shared_ptr<mpv_handle>(handle, [destroy
+#ifdef Q_OS_WIN
+        , mediaCa
+#endif
+    ](mpv_handle *value) mutable {
+        destroy(value);
+#ifdef Q_OS_WIN
+        mediaCa.reset();
+#endif
+    });
     createError.clear();
     lib->setWakeupCallback(handle, &MpvClient::onWakeup, client);
 
@@ -146,6 +182,14 @@ QVariantMap MpvClient::diagnosticSnapshot() const {
 }
 
 QString MpvClient::lastCreateError() { return createError; }
+
+QString MpvClient::errorString(int errorCode) {
+    auto *lib = MpvLib::instance();
+    if (!lib->errorString) return QStringLiteral("错误码 %1").arg(errorCode);
+    const char *message = lib->errorString(errorCode);
+    const QString text = message ? QString::fromUtf8(message).trimmed() : QString();
+    return text.isEmpty() ? QStringLiteral("错误码 %1").arg(errorCode) : text;
+}
 
 MpvClient::MpvClient(QObject *parent) : QObject(parent) {
     audioWatchdog_.setSingleShot(true);
@@ -289,11 +333,12 @@ bool MpvClient::getFlag(const QString &name) const {
     return value != 0;
 }
 
-void MpvClient::setPropertyString(const QString &name, const QString &value) {
-    if (!handle_) return;
+int MpvClient::setPropertyString(const QString &name, const QString &value) {
+    if (!handle_) return MPV_ERROR_UNINITIALIZED;
     auto *lib = MpvLib::instance();
     const int result = lib->setPropertyStringFn(handle_.get(), name.toUtf8(), value.toUtf8());
     if (result < 0) qWarning() << "mpv property" << name << lib->errorString(result);
+    return result;
 }
 
 void MpvClient::observeProperty(const QString &name, mpv_format format) {

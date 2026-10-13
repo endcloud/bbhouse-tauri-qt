@@ -9,7 +9,6 @@ import "../js/Format.js" as Format
 FluPage {
     id: page
     padding: 0
-    signal backRequested()
     property alias searchQuery: content.searchQuery
     readonly property bool compactHeader: width < 680
     readonly property bool followed: {
@@ -53,22 +52,6 @@ FluPage {
                 rightMargin: page.compactHeader ? 0 : 16
             }
             spacing: 12
-
-            FluIconButton {
-                id: back_button
-                Layout.preferredWidth: 34
-                Layout.preferredHeight: 34
-                radius: 17
-                iconSource: FluentIcons.ChevronLeft
-                iconSize: 14
-                Accessible.name: qsTr("返回上一页")
-                onClicked: page.backRequested()
-                FluTooltip {
-                    text: qsTr("返回上一页")
-                    visible: back_button.hovered
-                    delay: 300
-                }
-            }
 
             FluClip {
                 Layout.preferredWidth: 56

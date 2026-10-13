@@ -92,7 +92,9 @@ class PlayerApi {
         PgcEntitlement entitlement;
     };
 
-    // 分 P 1 的 cid —— v1 只播分 P 1。
+    // 普通稿件的完整分 P 列表；顺序与 pagelist 响应一致。
+    static QList<VideoPage> getVideoPages(BilibiliApiClient &api, qint64 aid,
+                                          const QString &cookie);
     static VideoPage getFirstPage(BilibiliApiClient &api, qint64 aid, const QString &cookie);
 
     // MP4 渐进式播放地址(fnval=1 durl 路径)。先试 wbi/pc 形态,再回退跳过 referer

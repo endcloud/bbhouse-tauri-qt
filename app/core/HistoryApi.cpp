@@ -1,6 +1,7 @@
 #include "core/HistoryApi.h"
 
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonValue>
 #include <QUrlQuery>
 
@@ -8,6 +9,7 @@
 
 namespace {
 constexpr const char *kEndpoint = "https://api.bilibili.com/x/web-interface/history/cursor";
+constexpr const char *kSearchEndpoint = "https://api.bilibili.com/x/web-interface/history/search";
 }  // namespace
 
 BilibiliHistoryPage HistoryApi::fetchPage(BilibiliApiClient &api, const QString &cookie,
@@ -27,6 +29,19 @@ BilibiliHistoryPage HistoryApi::fetchPage(BilibiliApiClient &api, const QString 
     return page;
 }
 
+BilibiliHistoryPage HistoryApi::fetchSearchPage(BilibiliApiClient &api, const QString &cookie,
+                                                const QString &keyword, int page) {
+    const auto envelope = api.get(buildSearchUri(keyword, page), cookie);
+    BilibiliHistoryPage result;
+    result.rawJson = envelope.raw;
+    const QJsonObject data = jh::getChild(envelope.root, "data");
+    const QJsonArray list = jh::getChildArray(data, "list");
+    for (const QJsonValue &value : list) {
+        if (value.isObject()) result.items.append(parseItem(value.toObject()));
+    }
+    return result;
+}
+
 QUrl HistoryApi::buildUri(const HistoryCursor &cursor, int pageSize) {
     QUrl url(kEndpoint);
     QUrlQuery query;
@@ -40,6 +55,16 @@ QUrl HistoryApi::buildUri(const HistoryCursor &cursor, int pageSize) {
             query.addQueryItem("business", cursor.business);
         }
     }
+    url.setQuery(query);
+    return url;
+}
+
+QUrl HistoryApi::buildSearchUri(const QString &keyword, int page) {
+    QUrl url(kSearchEndpoint);
+    QUrlQuery query;
+    query.addQueryItem("pn", QString::number(qMax(1, page)));
+    query.addQueryItem("keyword", keyword.trimmed());
+    query.addQueryItem("business", "all");
     url.setQuery(query);
     return url;
 }

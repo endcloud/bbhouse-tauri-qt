@@ -66,13 +66,17 @@ FluWindow {
             appBar.height = prevAppBarHeight
             window.visibility = prevVisibility === Window.Maximized ? Window.Maximized
                                                                     : Window.Windowed
+            // Restore the native frame only after QWindow leaves fullscreen;
+            // doing it in the same native transition can expose a stale frame.
+            Qt.callLater(function() { PlayerController.setFullscreenWindow(window, false) })
         } else {
             prevVisibility = window.visibility
             prevAppBarHeight = appBar.height > 0 ? appBar.height : 48
             // 显示器全屏:画面覆盖整个屏幕,无标题栏
             appBar.visible = false
             appBar.height = 0
-            window.visibility = Window.FullScreen
+            PlayerController.setFullscreenWindow(window, true)
+            window.showFullScreen()
         }
         pokeControls()
     }
@@ -199,6 +203,28 @@ FluWindow {
                 break
             }
             if (event.accepted) window.pokeControls()
+        }
+
+        Connections {
+            target: AppController
+            function onBackRequested() {
+                if (window.fullscreenActive) window.toggleFullscreen()
+                else window.close()
+            }
+            function onGamepadButtonPressed(button) {
+                switch (button) {
+                case 0: PlayerController.togglePlayPause(); window.pokeControls(); break // A
+                case 1: if (window.fullscreenActive) window.toggleFullscreen(); else window.close(); break // B
+                case 4: window.toggleFullscreen(); break // Start
+                case 6: PlayerController.setVolumePercent(PlayerController.volumePercent + 5); break
+                case 7: PlayerController.setVolumePercent(PlayerController.volumePercent - 5); break
+                case 8: PlayerController.seek(PlayerController.position - 5); break
+                case 9: PlayerController.seek(PlayerController.position + 5); break
+                case 10: PlayerController.seek(PlayerController.position - 30); break // LB
+                case 11: PlayerController.playNext(); break
+                }
+                if (button <= 11) window.pokeControls()
+            }
         }
 
         // 视频区(右侧留出播放列表面板)

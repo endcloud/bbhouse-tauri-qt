@@ -93,6 +93,7 @@ class OnlineHistoryController : public QObject {
     QVariantMap scrollAnchor_;
     qreal scrollOffset_ = 0;     // 页面渲染释放前记忆的滚动位置(主线程,纯 UI 状态)
     QString searchText_;         // 已提交搜索词(主线程,纯 UI 状态,不影响拉取)
+    bool pendingSearchRefresh_ = false;
     std::atomic_bool busy_{false};
 };
 

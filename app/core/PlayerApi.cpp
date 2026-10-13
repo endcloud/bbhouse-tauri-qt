@@ -77,8 +77,8 @@ bool inflateAll(const QByteArray &src, int windowBits, QByteArray *out) {
 
 // ---- 分 P ----
 
-PlayerApi::VideoPage PlayerApi::getFirstPage(BilibiliApiClient &api, qint64 aid,
-                                             const QString &cookie) {
+QList<PlayerApi::VideoPage> PlayerApi::getVideoPages(BilibiliApiClient &api, qint64 aid,
+                                                     const QString &cookie) {
     QMap<QString, QString> params;
     params.insert("aid", QString::number(aid));
     const auto envelope = api.get(buildUrl(kPagelistEndpoint, params), cookie);
@@ -87,13 +87,27 @@ PlayerApi::VideoPage PlayerApi::getFirstPage(BilibiliApiClient &api, qint64 aid,
     if (data.isEmpty()) {
         throw ApiError(0, Loc::get("未找到分 P 信息，视频可能已失效。"), 0);
     }
+    QList<VideoPage> pages;
+    pages.reserve(data.size());
+    for (const QJsonValue &value : data) {
+        if (!value.isObject()) continue;
+        const QJsonObject object = value.toObject();
+        VideoPage page;
+        page.cid = jh::getInt64(object, "cid");
+        page.page = static_cast<int>(jh::getInt64(object, "page"));
+        page.part = jh::getString(object, "part");
+        if (page.cid > 0) pages.append(page);
+    }
+    if (pages.isEmpty()) {
+        throw ApiError(0, Loc::get("未找到分 P 信息，视频可能已失效。"), 0);
+    }
+    return pages;
+}
 
-    const QJsonObject first = data.at(0).toObject();
-    VideoPage page;
-    page.cid = jh::getInt64(first, "cid");
-    page.page = static_cast<int>(jh::getInt64(first, "page"));
-    page.part = jh::getString(first, "part");
-    return page;
+PlayerApi::VideoPage PlayerApi::getFirstPage(BilibiliApiClient &api, qint64 aid,
+                                             const QString &cookie) {
+    const QList<VideoPage> pages = getVideoPages(api, aid, cookie);
+    return pages.constFirst();
 }
 
 // ---- MP4 durl(fnval=1)----
@@ -388,15 +402,21 @@ PlayerApi::DashPlayInfo PlayerApi::selectDash(const QJsonObject &data, const QJs
     }
     out.hasAudio = !out.audioCandidates.isEmpty();
 
-    // 优先请求的档位(回退到账号实际拿到的最高档),档位内先匹配偏好编码
+    // 优先请求的档位;缺失时回落到最近的较低档位,避免突然跳到最高档。
     // (avc/hev/acd…),再任意编码;音频取最高规格段。
     bool hasPreferred = false;
-    int maxQuality = videos.first().quality;
+    int fallbackQuality = 0;
+    int maximumQuality = videos.first().quality;
+    int lowestQuality = videos.first().quality;
     for (const DashSegment &segment : videos) {
         if (segment.quality == preferQn) hasPreferred = true;
-        if (segment.quality > maxQuality) maxQuality = segment.quality;
+        if (segment.quality < lowestQuality) lowestQuality = segment.quality;
+        if (segment.quality < preferQn && segment.quality > fallbackQuality) fallbackQuality = segment.quality;
+        if (segment.quality > maximumQuality) maximumQuality = segment.quality;
     }
-    const int targetQuality = hasPreferred ? preferQn : maxQuality;
+    const int targetQuality = preferQn <= 0
+        ? maximumQuality
+        : (hasPreferred ? preferQn : (fallbackQuality > 0 ? fallbackQuality : lowestQuality));
 
     const DashSegment *chosen = nullptr;
     for (const DashSegment &segment : videos) {

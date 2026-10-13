@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QUrlQuery>
 #include <cstdio>
 
 #include "core/ApiErrors.h"
@@ -12,6 +13,7 @@
 #include "core/MediaUrlPolicy.h"
 #include "player/SubtitleTimeline.h"
 #include "core/WbiSigner.h"
+#include "core/HistoryApi.h"
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -69,6 +71,18 @@ int main(int argc, char **argv) {
           "稳定 CDN 优先并去重");
     check(!dash.formats.at(1).available && dash.formats.at(1).needVip,
           "未下发清晰度不可选择");
+    const QJsonObject fallbackDash{{"video", QJsonArray{
+        QJsonObject{{"id", 64}, {"codecs", "avc1"}, {"baseUrl", "https://fixture.test/64"}},
+        QJsonObject{{"id", 80}, {"codecs", "avc1"}, {"baseUrl", "https://fixture.test/80"}}}}};
+    check(PlayerApi::selectDash({}, fallbackDash, 112, "avc").selectedQn == 80,
+          "缺失首选清晰度时回落到最近较低档位");
+    const QUrl searchUri = HistoryApi::buildSearchUri(QStringLiteral("猫 & dog"), 2);
+    const QUrlQuery searchQuery(searchUri);
+    check(searchUri.path().endsWith("/x/web-interface/history/search")
+          && searchQuery.queryItemValue("pn") == "2"
+          && searchQuery.queryItemValue("keyword") == QStringLiteral("猫 & dog")
+          && searchQuery.queryItemValue("business") == "all",
+          "历史搜索使用官方 pn/keyword/business 参数");
     const QJsonObject backupOnly{{"video", QJsonArray{QJsonObject{
         {"id", 64}, {"backupUrl", QJsonArray{"https://cdn.bilivideo.com/backup"}}}}}};
     check(PlayerApi::selectDash({}, backupOnly, 64, "avc").selectedVideoUrls.size() == 1,

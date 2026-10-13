@@ -30,6 +30,8 @@ class MpvClient : public QObject {
     mpv_handle *handle() const { return handle_.get(); }
     std::shared_ptr<mpv_handle> sharedHandle() const { return handle_; }
     static QString lastCreateError();
+    // Converts a libmpv error code without exposing command arguments.
+    static QString errorString(int errorCode);
 
     // 选项/属性
     void setOptionString(const QString &name, const QString &value);
@@ -38,7 +40,7 @@ class MpvClient : public QObject {
     bool getFlag(const QString &name) const;
     // Explicit allowlist only: never exports paths, headers, track titles or metadata.
     QVariantMap diagnosticSnapshot() const;
-    void setPropertyString(const QString &name, const QString &value);
+    int setPropertyString(const QString &name, const QString &value);
     void observeProperty(const QString &name, mpv_format format);
 
     // 命令(argv 语义:各元素即参数,无再解析,防 URL 裸逗号截断)

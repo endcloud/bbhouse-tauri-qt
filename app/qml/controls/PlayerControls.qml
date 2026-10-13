@@ -13,7 +13,8 @@ FocusScope {
     readonly property bool compact: width < 810
     readonly property bool hasNext: controller.currentIndex >= 0
                                    && controller.currentIndex + 1 < controller.playlist.length
-    readonly property bool menuOpen: quality_menu.visible || speed_menu.visible || episode_menu.visible || subtitle_menu.visible
+    readonly property bool menuOpen: quality_menu.visible || speed_menu.visible || episode_menu.visible
+                                      || page_menu.visible || subtitle_menu.visible
     readonly property bool interacting: menuOpen || seek.pressed || volume_slider.pressed
                                        || control_hover.hovered || activeFocus
     property int lastAudibleVolume: 100
@@ -45,6 +46,7 @@ FocusScope {
         quality_menu.close()
         speed_menu.close()
         episode_menu.close()
+        page_menu.close()
         subtitle_menu.close()
     }
     onInteractingChanged: activity()
@@ -344,6 +346,17 @@ FocusScope {
             }
         }
         PlayerControlButton {
+            id: page_button
+            visible: !controls.controller.seasonMode && controls.controller.videoPages.length > 1
+            caption: qsTr("分P")
+            contentDescription: qsTr("选择分P")
+            onClicked: {
+                controls.activity()
+                page_menu.open()
+                page_list.positionViewAtIndex(Math.max(0, controls.controller.currentPage), ListView.Contain)
+            }
+        }
+        PlayerControlButton {
             visible: !controls.controller.seasonMode
             iconSource: FluentIcons.List
             active: controls.playlistExpanded
@@ -442,6 +455,36 @@ FocusScope {
                 checked: modelData.codec === controls.controller.preferCodec
                 onTriggered: controls.controller.setPreferCodec(modelData.codec)
             }
+        }
+    }
+    DarkMenu {
+        id: page_menu
+        objectName: "playerPageMenu"
+        trigger: page_button
+        width: Math.min(340, controls.width)
+        contentItem: ListView {
+            id: page_list
+            implicitHeight: Math.max(36, Math.min(count * 36, controls.popupMaxHeight - 12))
+            model: controls.controller.videoPages
+            currentIndex: controls.controller.currentPage
+            clip: true
+            ScrollBar.vertical: FluScrollBar {}
+            delegate: DarkMenuItem {
+                required property int index
+                required property var modelData
+                width: page_list.width
+                height: 36
+                text: (index + 1) + ". " + String(modelData.part || qsTr("分P %1").arg(index + 1))
+                checkable: true
+                checked: index === controls.controller.currentPage
+                highlighted: ListView.isCurrentItem
+                onTriggered: { controls.controller.setPage(index); page_menu.close() }
+            }
+        }
+        onOpened: {
+            page_list.currentIndex = controls.controller.currentPage
+            page_list.forceActiveFocus()
+            controls.activity()
         }
     }
     DarkMenu {

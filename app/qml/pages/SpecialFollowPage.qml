@@ -57,6 +57,9 @@ FluPage {
     property int pendingSeasonRequest: 0
     property int pendingSeasonAction: 0  // 1 = 播放全部 2 = 展开
     property int seasonRequestCounter: 0
+    // FluPagination 在点击页码时立即更新 pageCurrent；请求响应期间其他档位信号
+    // 不应把它回写成旧页，避免数字与选中图标错位。
+    property int requestedPage: 1
 
     // ---- 管理弹层勾选镜像(mid → bool;控制器为最终事实,QML 镜像驱动绑定) ----
     property var checkedMap: ({})
@@ -146,6 +149,7 @@ FluPage {
         arcError = ""
         seasonError = ""
         articleError = ""
+        requestedPage = 1
         scroll_view.contentY = 0
         syncPaginationBar()
     }
@@ -154,6 +158,7 @@ FluPage {
         if (currentTab === index) return
         currentTab = index
         page.controller.currentTab = index  // 同步到控制器记忆
+        requestedPage = 1
         scroll_view.contentY = 0  // 切档回顶(数据状态仍按档缓存)
         syncPaginationBar()
         page.controller.ensureCurrentTabLoaded(index)
@@ -171,7 +176,10 @@ FluPage {
     }
 
     function syncPaginationBar() {
-        pagination_bar.pageCurrent = Math.max(1, pageInfoPage)
+        var totalPages = pageInfoTotal > 0 ? Math.ceil(pageInfoTotal / page.pageSize) : 1
+        var target = (tabBusy && requestedPage !== pageInfoPage)
+                ? requestedPage : (pageInfoPage > 0 ? pageInfoPage : requestedPage)
+        pagination_bar.pageCurrent = Math.max(1, Math.min(target, totalPages))
     }
 
     function upForMid(mid) {
@@ -420,6 +428,8 @@ FluPage {
                                                  FluTheme.primaryColor.g,
                                                  FluTheme.primaryColor.b, 0.30)
                                        : Qt.rgba(0, 0, 0, 0)
+                            border.width: avatar_item.selected ? 3 : 0
+                            border.color: FluTheme.primaryColor
                         }
                         FluClip {
                             anchors.centerIn: parent
@@ -444,6 +454,15 @@ FluPage {
                                             AppController.decodableImageFormats)
                                 }
                             }
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 44
+                            height: 44
+                            radius: 22
+                            color: "transparent"
+                            border.width: avatar_item.selected ? 2 : 0
+                            border.color: Qt.rgba(1, 1, 1, 0.9)
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -1183,6 +1202,7 @@ FluPage {
                 }
             }
             onRequestPage: function (requestedPage, count) {
+                page.requestedPage = requestedPage
                 scroll_view.contentY = 0
                 if (page.currentTab === 0) {
                     page.controller.loadArcPage(requestedPage)
@@ -1630,6 +1650,7 @@ FluPage {
         target: page.controller
 
         function onCurrentMidChanged() {
+            page.requestedPage = 1
             if (page.spaceMode) {
                 page.searchQuery = ""
                 page.currentTab = 0
@@ -1647,15 +1668,19 @@ FluPage {
         }
         function onArcItemsChanged() {
             page.arcError = ""
-            page.syncPaginationBar()
+        }
+        function onArcInfoChanged() {
+            Qt.callLater(page.syncPaginationBar)
         }
         function onSeasonItemsChanged() {
             page.seasonError = ""
-            page.syncPaginationBar()
+        }
+        function onSeasonInfoChanged() {
+            Qt.callLater(page.syncPaginationBar)
         }
         function onArticleInfoChanged() {
             page.articleError = ""
-            page.syncPaginationBar()
+            Qt.callLater(page.syncPaginationBar)
         }
         function onLoadFailed(message) {
             // 失败仅来自当前档的用户动作(刷新/翻页/切档首拉)

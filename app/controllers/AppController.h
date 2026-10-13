@@ -4,6 +4,9 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QNetworkAccessManager>
+
+class QEvent;
 
 #include "preferences/AppPreferences.h"
 
@@ -15,6 +18,10 @@ class AppController : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(QString appVersion READ appVersion CONSTANT)
+    Q_PROPERTY(int versionCode READ versionCode CONSTANT)
+    Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY updateAvailableChanged)
+    Q_PROPERTY(QString updateUrl READ updateUrl NOTIFY updateAvailableChanged)
+    Q_PROPERTY(int remoteVersionCode READ remoteVersionCode NOTIFY updateAvailableChanged)
     // 封面 CDN 转码后缀:按本机 Qt 图像插件能力选择(.avif/.webp/空=回源 jpeg)
     Q_PROPERTY(QString imageTranscodeSuffix READ imageTranscodeSuffix CONSTANT)
     // 本机 Qt 可解码的图像格式清单(小写扩展名),供 QML 侧对 webp 等
@@ -32,6 +39,10 @@ class AppController : public QObject {
     void setLanguage(const QString &value);
 
     QString appVersion() const;
+    int versionCode() const;
+    bool updateAvailable() const { return updateAvailable_; }
+    QString updateUrl() const { return updateUrl_; }
+    int remoteVersionCode() const { return remoteVersionCode_; }
 
     QString imageTranscodeSuffix() const;
 
@@ -42,16 +53,31 @@ class AppController : public QObject {
 
     Q_INVOKABLE void openUserSpace(const QString &mid, const QString &name,
                                    const QString &faceUrl);
+    Q_INVOKABLE void checkForUpdates();
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
    signals:
     void userSpaceRequested(QString mid, QString name, QString faceUrl);
     void themeChanged();
     void languageChanged();
+    void updateAvailableChanged();
+    void backRequested();
+    void gamepadButtonPressed(int button);
 
    private:
     static bool isValidTheme(const QString &value);
 
     AppPreferences *preferences_;
+    QNetworkAccessManager network_;
+    bool updateAvailable_ = false;
+    QString updateUrl_;
+    int remoteVersionCode_ = 0;
+#ifdef Q_OS_WIN
+    class GamepadPoller;
+    GamepadPoller *gamepadPoller_ = nullptr;
+#endif
 };
 
 #endif  // APP_CONTROLLER_H
